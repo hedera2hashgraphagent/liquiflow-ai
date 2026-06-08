@@ -4,20 +4,14 @@ import { useWallet } from "@/providers/WalletProvider";
 
 /** Header control — opens HashPack / WalletConnect modal on Hedera Testnet. */
 export function WalletButton() {
-  const { accountId, isConnected, isConnecting, isInitialized, connect, disconnect } =
-    useWallet();
-
-  if (!isInitialized) {
-    return (
-      <button
-        type="button"
-        disabled
-        className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-500"
-      >
-        Initializing wallet…
-      </button>
-    );
-  }
+  const {
+    accountId,
+    isConnected,
+    isConnecting,
+    walletError,
+    connect,
+    disconnect,
+  } = useWallet();
 
   if (isConnected && accountId) {
     return (
@@ -37,13 +31,20 @@ export function WalletButton() {
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => connect()}
-      disabled={isConnecting}
-      className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-900/30 transition hover:from-emerald-500 hover:to-teal-400 disabled:opacity-60"
-    >
-      {isConnecting ? "Connecting…" : "Connect Wallet"}
-    </button>
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={() => connect()}
+        disabled={isConnecting}
+        className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-900/30 transition hover:from-emerald-500 hover:to-teal-400 disabled:opacity-60"
+      >
+        {isConnecting ? "Connecting…" : "Connect Wallet"}
+      </button>
+      {walletError && (
+        <span className="max-w-[220px] text-right text-[10px] text-amber-400">
+          {walletError}
+        </span>
+      )}
+    </div>
   );
 }

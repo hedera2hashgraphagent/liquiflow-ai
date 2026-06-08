@@ -3,37 +3,39 @@
 /**
  * WalletConnect / HashPack integration via @hashgraph/hedera-wallet-connect.
  *
- * Uses DAppConnector (WalletConnect modal) for Hedera Testnet.
- * PaymentCard calls `executeMPPPayment` to sign an MPP TransferTransaction.
+ * Wallet libs are dynamically imported and initialized lazily on first connect
+ * so the chat UI renders even when WalletConnect env vars are missing.
  */
 
 import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
-import {
-  DAppConnector,
-  HederaChainId,
-  HederaJsonRpcMethod,
-  HederaSessionEvent,
-} from "@hashgraph/hedera-wallet-connect";
-import { AccountId, LedgerId } from "@hiero-ledger/sdk";
+import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
 import type { AP2PaymentRequest } from "@/lib/ap2";
-import { buildMPPTransferTransaction } from "@/lib/mpp";
+import {
+  HEDERA_JSON_RPC_METHODS,
+  HEDERA_SESSION_EVENTS,
+  HEDERA_TESTNET_CHAIN,
+} from "@/lib/wallet-constants";
 
 const PROJECT_ID =
-  process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "YOUR_WALLETCONNECT_PROJECT_ID";
+  process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim() ?? "";
+
+const PLACEHOLDER_PROJECT_ID = "YOUR_WALLETCONNECT_PROJECT_ID";
 
 const DAPP_METADATA = {
   name: "LiquiFlow AI",
   description: "Hedera Commerce Agent — AP2 / MPP DeFi execution",
-  url: typeof window !== "undefined" ? window.location.origin : "http://localhost:3000",
+  url:
+    typeof window !== "undefined"
+      ? window.location.origin
+      : "http://localhost:3000",
   icons: ["https://avatars.githubusercontent.com/u/31002956"],
 };
 
@@ -42,65 +44,92 @@ export interface WalletContextValue {
   isConnected: boolean;
   isConnecting: boolean;
   isInitialized: boolean;
+  walletError: string | null;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
-  /** Signs & executes MPP TransferTransaction via HashPack / WalletConnect */
   executeMPPPayment: (payment: AP2PaymentRequest) => Promise<string>;
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null);
 
+function isValidProjectId(projectId: string): boolean {
+  return (
+    projectId.length > 0 &&
+    projectId !== PLACEHOLDER_PROJECT_ID &&
+    !projectId.startsWith("your_")
+  );
+}
+
 export function WalletProvider({ children }: { children: ReactNode }) {
   const connectorRef = useRef<DAppConnector | null>(null);
+  const initPromiseRef = useRef<Promise<DAppConnector | null> | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function initWallet() {
-      try {
-        const connector = new DAppConnector(
-          DAPP_METADATA,
-          LedgerId.TESTNET,
-          PROJECT_ID,
-          Object.values(HederaJsonRpcMethod),
-          [HederaSessionEvent.ChainChanged, HederaSessionEvent.AccountsChanged],
-          [HederaChainId.Testnet],
-        );
-
-        await connector.init({ logger: "error" });
-        if (cancelled) return;
-
-        connectorRef.current = connector;
-
-        // Restore session if user already paired HashPack
-        if (connector.signers.length > 0) {
-          setAccountId(connector.signers[0].getAccountId().toString());
-        }
-
-        setIsInitialized(true);
-      } catch (error) {
-        console.error("[WalletProvider] init failed:", error);
-        setIsInitialized(true);
-      }
+  const ensureConnector = useCallback(async (): Promise<DAppConnector | null> => {
+    if (connectorRef.current) {
+      return connectorRef.current;
     }
 
-    initWallet();
-    return () => {
-      cancelled = true;
-    };
+    if (!isValidProjectId(PROJECT_ID)) {
+      const message =
+        "Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in .env.local (get one at https://cloud.reown.com/).";
+      setWalletError(message);
+      throw new Error(message);
+    }
+
+    if (!initPromiseRef.current) {
+      initPromiseRef.current = (async () => {
+        try {
+          const [{ DAppConnector }, { LedgerId }] = await Promise.all([
+            import("@hashgraph/hedera-wallet-connect"),
+            import("@hiero-ledger/sdk"),
+          ]);
+
+          const connector = new DAppConnector(
+            DAPP_METADATA,
+            LedgerId.TESTNET,
+            PROJECT_ID,
+            [...HEDERA_JSON_RPC_METHODS],
+            [...HEDERA_SESSION_EVENTS],
+            [HEDERA_TESTNET_CHAIN],
+          );
+
+          await connector.init({ logger: "error" });
+          connectorRef.current = connector;
+
+          if (connector.signers.length > 0) {
+            setAccountId(connector.signers[0].getAccountId().toString());
+          }
+
+          setWalletError(null);
+          return connector;
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "WalletConnect initialization failed.";
+          setWalletError(message);
+          console.error("[WalletProvider] init failed:", error);
+          return null;
+        } finally {
+          setIsInitialized(true);
+        }
+      })();
+    }
+
+    return initPromiseRef.current;
   }, []);
 
   const connect = useCallback(async () => {
-    const connector = connectorRef.current;
-    if (!connector) {
-      throw new Error("WalletConnect not initialized. Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID.");
-    }
-
     setIsConnecting(true);
+    setWalletError(null);
     try {
+      const connector = await ensureConnector();
+      if (!connector) return;
+
       await connector.openModal();
       const signer = connector.signers[0];
       if (signer) {
@@ -109,26 +138,33 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsConnecting(false);
     }
-  }, []);
+  }, [ensureConnector]);
 
   const disconnect = useCallback(async () => {
     const connector = connectorRef.current;
-    if (connector?.signers[0]) {
-      await connector.disconnect(connector.signers[0].topic);
+    const signer = connector?.signers[0];
+    if (connector && signer) {
+      try {
+        await connector.disconnect(signer.topic);
+      } catch (error) {
+        // Session may already be closed — still clear local state
+        console.warn("[WalletProvider] disconnect:", error);
+      }
     }
     setAccountId(null);
   }, []);
 
-  /**
-   * MPP — Multi-Party Payment execution.
-   * Single TransferTransaction atomically splits HBAR to multiple recipients.
-   */
   const executeMPPPayment = useCallback(
     async (payment: AP2PaymentRequest): Promise<string> => {
-      const connector = connectorRef.current;
+      const connector = await ensureConnector();
       if (!connector || !accountId) {
         throw new Error("Connect HashPack or a WalletConnect wallet first.");
       }
+
+      const [{ AccountId }, { buildMPPTransferTransaction }] = await Promise.all([
+        import("@hiero-ledger/sdk"),
+        import("@/lib/mpp"),
+      ]);
 
       const transaction = buildMPPTransferTransaction({
         payerAccountId: accountId,
@@ -137,12 +173,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
       const signer = connector.getSigner(AccountId.fromString(accountId));
       await transaction.freezeWithSigner(signer);
-
-      // Preferred path: SDK Signer interface via WalletConnect
       const response = await transaction.executeWithSigner(signer);
       return response.transactionId.toString();
     },
-    [accountId],
+    [accountId, ensureConnector],
   );
 
   const value = useMemo<WalletContextValue>(
@@ -151,11 +185,20 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       isConnected: Boolean(accountId),
       isConnecting,
       isInitialized,
+      walletError,
       connect,
       disconnect,
       executeMPPPayment,
     }),
-    [accountId, isConnecting, isInitialized, connect, disconnect, executeMPPPayment],
+    [
+      accountId,
+      isConnecting,
+      isInitialized,
+      walletError,
+      connect,
+      disconnect,
+      executeMPPPayment,
+    ],
   );
 
   return (
