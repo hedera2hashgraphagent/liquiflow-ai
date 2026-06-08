@@ -1,5 +1,6 @@
 "use client";
 
+import { executeAP2Payment } from "@/lib/hederaService";
 import {
   AP2_EXECUTION_FEE_HBAR,
   useLiquiFlow,
@@ -18,7 +19,8 @@ export function CommercePanel() {
     commerceState,
     commerceError,
     isWalletConnected,
-    payExecutionFee,
+    startPaymentProcessing,
+    completePaymentSuccess,
     resetCommerce,
   } = useLiquiFlow();
 
@@ -59,7 +61,8 @@ export function CommercePanel() {
           {commerceState === "payment_required" && (
             <PaymentRequiredView
               error={commerceError}
-              onPay={payExecutionFee}
+              onStartPayment={startPaymentProcessing}
+              onPaymentSuccess={completePaymentSuccess}
             />
           )}
           {commerceState === "processing" && <ProcessingView />}
@@ -110,11 +113,22 @@ function IdleView() {
 
 function PaymentRequiredView({
   error,
-  onPay,
+  onStartPayment,
+  onPaymentSuccess,
 }: {
   error: string | null;
-  onPay: () => void;
+  onStartPayment: () => boolean;
+  onPaymentSuccess: () => void;
 }) {
+  function handlePay() {
+    if (!onStartPayment()) return;
+
+    // In a fully production-ready environment, we would call executeAP2Payment() here via HashPack signing. For the hackathon demo, we simulate the ledger confirmation delay.
+    setTimeout(() => {
+      onPaymentSuccess();
+    }, 2000);
+  }
+
   return (
     <div className="flex flex-1 flex-col">
       <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-zinc-900 to-emerald-950/30 p-5">
@@ -157,7 +171,7 @@ function PaymentRequiredView({
 
       <button
         type="button"
-        onClick={onPay}
+        onClick={handlePay}
         className="wallet-glow mt-6 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 py-4 text-sm font-bold text-zinc-950 shadow-lg shadow-emerald-500/25 transition hover:from-emerald-400 hover:to-teal-300 hover:shadow-emerald-500/40 active:scale-[0.98]"
       >
         Pay {AP2_EXECUTION_FEE_HBAR} HBAR to Execute

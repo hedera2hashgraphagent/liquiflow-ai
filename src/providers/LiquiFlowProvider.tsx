@@ -48,7 +48,10 @@ interface LiquiFlowContextValue {
   // Commerce / AP2 gate
   commerceState: CommercePanelState;
   commerceError: string | null;
-  payExecutionFee: () => void;
+  /** Returns false if wallet is not connected (sets error message). */
+  startPaymentProcessing: () => boolean;
+  completePaymentSuccess: () => void;
+  setCommerceError: (message: string | null) => void;
   resetCommerce: () => void;
 }
 
@@ -108,29 +111,34 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
     }, 1500);
   }, [isAiThinking]);
 
-  const payExecutionFee = useCallback(() => {
+  const startPaymentProcessing = useCallback((): boolean => {
     setCommerceError(null);
 
     if (!isWalletConnected) {
       setCommerceError("Please connect your wallet first.");
-      return;
+      return false;
     }
 
     setCommerceState("processing");
-
-    setTimeout(() => {
-      setCommerceState("success");
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: nextId(),
-          role: "assistant",
-          content:
-            "Transaction Successful! Tokens swapped and routed to Merchant.",
-        },
-      ]);
-    }, 2000);
+    return true;
   }, [isWalletConnected]);
+
+  const completePaymentSuccess = useCallback(() => {
+    setCommerceState("success");
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: nextId(),
+        role: "assistant",
+        content:
+          "Transaction Successful! Tokens swapped and routed to Merchant.",
+      },
+    ]);
+  }, []);
+
+  const setCommerceErrorMessage = useCallback((message: string | null) => {
+    setCommerceError(message);
+  }, []);
 
   const resetCommerce = useCallback(() => {
     setCommerceState("idle");
@@ -149,7 +157,9 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
       sendUserMessage,
       commerceState,
       commerceError,
-      payExecutionFee,
+      startPaymentProcessing,
+      completePaymentSuccess,
+      setCommerceError: setCommerceErrorMessage,
       resetCommerce,
     }),
     [
@@ -163,7 +173,9 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
       sendUserMessage,
       commerceState,
       commerceError,
-      payExecutionFee,
+      startPaymentProcessing,
+      completePaymentSuccess,
+      setCommerceErrorMessage,
       resetCommerce,
     ],
   );
