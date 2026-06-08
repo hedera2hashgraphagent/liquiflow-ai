@@ -195,8 +195,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         });
         const signer = connector.getSigner(AccountId.fromString(accountId));
 
-        await transaction.freezeWithSigner(signer);
-        const response = await transaction.executeWithSigner(signer);
+        // freezeWithSigner assigns node + valid start; node 0.0.3 set in mpp.ts
+        const frozen = await transaction.freezeWithSigner(signer);
+        const response = await frozen.executeWithSigner(signer);
 
         return response.transactionId.toString();
       } catch (error) {

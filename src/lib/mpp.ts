@@ -13,6 +13,7 @@ import {
   LedgerId,
 } from "@hiero-ledger/sdk";
 import type { AP2PaymentRequest } from "./ap2";
+import { HEDERA_TESTNET_NODE_ID } from "./hedera-constants";
 
 export interface BuildMPPTransactionParams {
   /** Connected wallet account that pays the fee */
@@ -48,7 +49,10 @@ export function buildMPPTransferTransaction({
     );
   }
 
-  return tx;
+  // Explicit Testnet node — required before freezeWithSigner / freezeWith
+  return tx.setNodeAccountIds([
+    AccountId.fromString(HEDERA_TESTNET_NODE_ID),
+  ]);
 }
 
 /** Resolves LedgerId for WalletConnect / SDK initialization. */

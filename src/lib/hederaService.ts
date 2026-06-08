@@ -1,12 +1,10 @@
 /**
- * Hedera ledger service — AP2 / MPP payment execution.
+ * Hedera ledger service — AP2 / MPP payment execution (Testnet).
  *
- * Server-side path using @hashgraph/sdk:
- *   - Client.forTestnet() with operator from environment
- *   - MPP TransferTransaction with explicit node + freezeWith(client)
- *   - .execute(client) with receipt validation
- *
- * Browser / HashPack path uses freezeWithSigner() via WalletProvider instead.
+ * Server-side operator flow:
+ *   1. Client.forTestnet() + setOperator(env credentials)
+ *   2. TransferTransaction with explicit node 0.0.3
+ *   3. freezeWith(client) → signWithOperator(client) → execute(client)
  */
 
 import {
@@ -17,13 +15,13 @@ import {
   Status,
   TransferTransaction,
 } from "@hashgraph/sdk";
+import { HEDERA_TESTNET_NODE_ID } from "./hedera-constants";
+
+export { HEDERA_TESTNET_NODE_ID };
 
 /** Mock treasury accounts receiving the MPP fee split (Hedera Testnet). */
 export const MPP_TREASURY_EXECUTOR = "0.0.11111";
 export const MPP_TREASURY_NETWORK = "0.0.22222";
-
-/** Well-known Hedera Testnet consensus node */
-export const HEDERA_TESTNET_NODE_ID = "0.0.3";
 
 /** Result returned after a successful AP2 MPP payment submission. */
 export interface AP2PaymentResult {
@@ -45,10 +43,6 @@ export class AP2PaymentError extends Error {
   }
 }
 
-/**
- * Calculates an 80 / 20 MPP split across executor and network treasuries.
- * For the default 10 HBAR AP2 fee this yields 8 ℏ + 2 ℏ.
- */
 export function calculateMPPSplit(totalHbar: number): {
   executorShare: number;
   networkShare: number;
@@ -63,20 +57,16 @@ export function calculateMPPSplit(totalHbar: number): {
   return { executorShare, networkShare };
 }
 
-/**
- * Builds the AP2 MPP TransferTransaction without freezing.
- * Wallet flows call freezeWithSigner(); server flows call prepareAP2MPPTransaction().
- */
+/** Builds an unfrozen MPP TransferTransaction. */
 export function buildAP2MPPTransaction(
   payerAccountId: string,
   amount: number,
 ): TransferTransaction {
   const payer = AccountId.fromString(payerAccountId);
   const { executorShare, networkShare } = calculateMPPSplit(amount);
-  const totalDebit = new Hbar(amount);
 
   return new TransferTransaction()
-    .addHbarTransfer(payer, totalDebit.negated())
+    .addHbarTransfer(payer, new Hbar(amount).negated())
     .addHbarTransfer(
       AccountId.fromString(MPP_TREASURY_EXECUTOR),
       new Hbar(executorShare),
@@ -89,8 +79,8 @@ export function buildAP2MPPTransaction(
 }
 
 /**
- * Creates a Hedera Testnet client with operator credentials from environment.
- * Required for server-side .execute() — never expose these keys to the browser.
+ * Step 1 — Initialize Testnet client and set operator from .env.local.
+ * Never call this from the browser; operator keys must stay server-side.
  */
 export function createTestnetClient(): Client {
   const operatorId = process.env.HEDERA_OPERATOR_ID?.trim();
@@ -98,24 +88,23 @@ export function createTestnetClient(): Client {
 
   if (!operatorId || !operatorKey) {
     throw new AP2PaymentError(
-      "Missing HEDERA_OPERATOR_ID or HEDERA_OPERATOR_PRIVATE_KEY. " +
-        "Add both to .env.local for server-side Testnet submission.",
+      "Missing HEDERA_OPERATOR_ID or HEDERA_OPERATOR_PRIVATE_KEY in .env.local.",
     );
   }
 
   const client = Client.forTestnet();
 
-  // fromString auto-detects DER (302e...) and raw ED25519 key formats
-  const privateKey = PrivateKey.fromString(operatorKey);
-
-  client.setOperator(AccountId.fromString(operatorId), privateKey);
+  client.setOperator(
+    AccountId.fromString(operatorId),
+    PrivateKey.fromString(operatorKey),
+  );
 
   return client;
 }
 
 /**
- * Assigns a Testnet node, attaches the client, and freezes the transaction.
- * Must be called before .execute(client) to satisfy nodeAccountId requirements.
+ * Step 2 & 3 — Attach client context, set Testnet node, and freeze.
+ * freezeWith(client) is mandatory before execute(); it resolves nodeAccountIds.
  */
 export function prepareAP2MPPTransaction(
   payerAccountId: string,
@@ -124,20 +113,18 @@ export function prepareAP2MPPTransaction(
 ): TransferTransaction {
   const nodeAccountId = AccountId.fromString(HEDERA_TESTNET_NODE_ID);
 
-  return buildAP2MPPTransaction(payerAccountId, amount)
+  const transaction = buildAP2MPPTransaction(payerAccountId, amount)
     .setNodeAccountIds([nodeAccountId])
-    .freezeWith(client);
+    .setMaxTransactionFee(new Hbar(5));
+
+  return transaction.freezeWith(client);
 }
 
 /**
- * Executes an AP2 Multi-Party Payment on Hedera Testnet using the operator key.
+ * Executes an AP2 MPP payment on Hedera Testnet using the operator key.
  *
- * Server-side: the operator account must be the payer (debit line) because only
- * the operator key signs the transaction. For other payer accounts use HashPack
- * executeWithSigner() in WalletProvider.
- *
- * @param payerAccountId - Must match HEDERA_OPERATOR_ID for server submission
- * @param amount           - Total HBAR fee (e.g. 10)
+ * The operator account (HEDERA_OPERATOR_ID) must be the debit line — only that
+ * key can sign server-side. HashPack user payments use WalletProvider instead.
  */
 export async function executeAP2Payment(
   payerAccountId: string,
@@ -150,10 +137,16 @@ export async function executeAP2Payment(
   const operatorId = process.env.HEDERA_OPERATOR_ID?.trim();
   const payer = payerAccountId.trim();
 
-  if (operatorId && payer !== operatorId) {
+  if (!operatorId) {
+    throw new AP2PaymentError(
+      "HEDERA_OPERATOR_ID is not configured in .env.local.",
+    );
+  }
+
+  if (payer !== operatorId) {
     throw new AP2PaymentError(
       `Server-side executeAP2Payment requires payerAccountId (${payer}) to match ` +
-        `HEDERA_OPERATOR_ID (${operatorId}). Connect HashPack to pay from a user wallet.`,
+        `HEDERA_OPERATOR_ID (${operatorId}). Use HashPack for user-wallet payments.`,
     );
   }
 
@@ -164,16 +157,15 @@ export async function executeAP2Payment(
   ];
 
   const client = createTestnetClient();
-  const effectivePayer = operatorId ?? payer;
 
   try {
-    const frozenTransaction = prepareAP2MPPTransaction(
-      effectivePayer,
-      amount,
-      client,
-    );
+    // Step 2–4: build → set node → freezeWith(client)
+    let transaction = prepareAP2MPPTransaction(payer, amount, client);
 
-    const txResponse = await frozenTransaction.execute(client);
+    // Operator signature (required for accounts debiting HBAR)
+    transaction = await transaction.signWithOperator(client);
+
+    const txResponse = await transaction.execute(client);
     const receipt = await txResponse.getReceipt(client);
 
     if (receipt.status !== Status.Success) {
@@ -185,7 +177,7 @@ export async function executeAP2Payment(
     return {
       transactionId: txResponse.transactionId.toString(),
       status: receipt.status.toString(),
-      payerAccountId: effectivePayer,
+      payerAccountId: payer,
       totalHbar: amount,
       mppRecipients,
     };
