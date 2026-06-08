@@ -1,23 +1,22 @@
 "use client";
 
 /**
- * WalletConnect / HashPack integration via @hashgraph/hedera-wallet-connect.
- *
- * Wallet libs are dynamically imported and initialized lazily on first connect
- * so the chat UI renders even when WalletConnect env vars are missing.
+ * Real HashPack / WalletConnect integration via @hashgraph/hedera-wallet-connect.
+ * Signs and executes AP2 MPP TransferTransactions on Hedera Testnet.
  */
 
 import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
-import type { AP2PaymentRequest } from "@/lib/ap2";
+import { parseWalletError } from "@/lib/wallet-errors";
 import {
   HEDERA_JSON_RPC_METHODS,
   HEDERA_SESSION_EVENTS,
@@ -47,7 +46,8 @@ export interface WalletContextValue {
   walletError: string | null;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
-  executeMPPPayment: (payment: AP2PaymentRequest) => Promise<string>;
+  /** HashPack signs & executes a real AP2 MPP transfer on Hedera Testnet */
+  executeAP2Payment: (amountHbar: number) => Promise<string>;
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null);
@@ -75,7 +75,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
     if (!isValidProjectId(PROJECT_ID)) {
       const message =
-        "Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in .env.local (get one at https://cloud.reown.com/).";
+        "Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in .env.local (https://cloud.reown.com/).";
       setWalletError(message);
       throw new Error(message);
     }
@@ -107,21 +107,30 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           setWalletError(null);
           return connector;
         } catch (error) {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "WalletConnect initialization failed.";
+          const message = parseWalletError(error);
           setWalletError(message);
           console.error("[WalletProvider] init failed:", error);
           return null;
-        } finally {
-          setIsInitialized(true);
         }
       })();
     }
 
     return initPromiseRef.current;
   }, []);
+
+  // Pre-warm WalletConnect in the background so Connect is ready immediately
+  useEffect(() => {
+    if (!isValidProjectId(PROJECT_ID)) {
+      setIsInitialized(true);
+      setWalletError(
+        "Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in .env.local (https://cloud.reown.com/).",
+      );
+      return;
+    }
+    ensureConnector()
+      .catch(() => undefined)
+      .finally(() => setIsInitialized(true));
+  }, [ensureConnector]);
 
   const connect = useCallback(async () => {
     setIsConnecting(true);
@@ -131,10 +140,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (!connector) return;
 
       await connector.openModal();
+
       const signer = connector.signers[0];
       if (signer) {
         setAccountId(signer.getAccountId().toString());
+      } else {
+        setWalletError("HashPack connection cancelled or no account was returned.");
       }
+    } catch (error) {
+      setWalletError(parseWalletError(error));
     } finally {
       setIsConnecting(false);
     }
@@ -147,34 +161,47 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       try {
         await connector.disconnect(signer.topic);
       } catch (error) {
-        // Session may already be closed — still clear local state
         console.warn("[WalletProvider] disconnect:", error);
       }
     }
     setAccountId(null);
+    setWalletError(null);
   }, []);
 
-  const executeMPPPayment = useCallback(
-    async (payment: AP2PaymentRequest): Promise<string> => {
+  /**
+   * AP2 / MPP — build TransferTransaction via hederaService, sign with HashPack,
+   * and submit to Hedera Testnet consensus nodes.
+   */
+  const executeAP2Payment = useCallback(
+    async (amountHbar: number): Promise<string> => {
       const connector = await ensureConnector();
       if (!connector || !accountId) {
-        throw new Error("Connect HashPack or a WalletConnect wallet first.");
+        throw new Error("Connect HashPack before paying the execution fee.");
       }
 
-      const [{ AccountId }, { buildMPPTransferTransaction }] = await Promise.all([
-        import("@hiero-ledger/sdk"),
-        import("@/lib/mpp"),
-      ]);
+      try {
+        const [{ AccountId }, { createAP2PaymentRequest }, { buildMPPTransferTransaction }] =
+          await Promise.all([
+            import("@hiero-ledger/sdk"),
+            import("@/lib/ap2"),
+            import("@/lib/mpp"),
+          ]);
 
-      const transaction = buildMPPTransferTransaction({
-        payerAccountId: accountId,
-        payment,
-      });
+        // MPP transaction — same split as hederaService.buildAP2MPPTransaction, typed for WalletConnect signer
+        const payment = createAP2PaymentRequest({ amount_hbar: amountHbar });
+        const transaction = buildMPPTransferTransaction({
+          payerAccountId: accountId,
+          payment,
+        });
+        const signer = connector.getSigner(AccountId.fromString(accountId));
 
-      const signer = connector.getSigner(AccountId.fromString(accountId));
-      await transaction.freezeWithSigner(signer);
-      const response = await transaction.executeWithSigner(signer);
-      return response.transactionId.toString();
+        await transaction.freezeWithSigner(signer);
+        const response = await transaction.executeWithSigner(signer);
+
+        return response.transactionId.toString();
+      } catch (error) {
+        throw new Error(parseWalletError(error));
+      }
     },
     [accountId, ensureConnector],
   );
@@ -188,7 +215,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       walletError,
       connect,
       disconnect,
-      executeMPPPayment,
+      executeAP2Payment,
     }),
     [
       accountId,
@@ -197,7 +224,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       walletError,
       connect,
       disconnect,
-      executeMPPPayment,
+      executeAP2Payment,
     ],
   );
 

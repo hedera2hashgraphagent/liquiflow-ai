@@ -18,7 +18,7 @@ interface PaymentCardProps {
 }
 
 export function PaymentCard({ payment, onPaymentSuccess }: PaymentCardProps) {
-  const { isConnected, connect, executeMPPPayment } = useWallet();
+  const { isConnected, connect, executeAP2Payment } = useWallet();
   const [status, setStatus] = useState<"idle" | "paying" | "success" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const [txId, setTxId] = useState<string | null>(null);
@@ -38,7 +38,7 @@ export function PaymentCard({ payment, onPaymentSuccess }: PaymentCardProps) {
     setStatus("paying");
     try {
       // MPP: one TransferTransaction, multiple recipient credits
-      const transactionId = await executeMPPPayment(payment);
+      const transactionId = await executeAP2Payment(payment.amount_hbar);
       setTxId(transactionId);
       setStatus("success");
       onPaymentSuccess(transactionId);

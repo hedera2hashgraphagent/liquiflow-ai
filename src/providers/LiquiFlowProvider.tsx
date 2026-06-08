@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * LiquiFlow hackathon demo state — wallet connection + AP2 commerce gate.
- * Simulates HashPack connect and Hedera Testnet payment for the demo flow.
+ * LiquiFlow app state — chat history and AP2 commerce panel.
+ * Wallet connection is handled by WalletProvider (real HashPack / WC).
  */
 
 import {
@@ -14,7 +14,6 @@ import {
   type ReactNode,
 } from "react";
 
-export const MOCK_HASHPACK_ACCOUNT = "0.0.123456";
 export const AP2_EXECUTION_FEE_HBAR = 10;
 
 export const AI_PAYMENT_GATE_MESSAGE =
@@ -33,25 +32,16 @@ export interface ChatMessage {
 }
 
 interface LiquiFlowContextValue {
-  // Wallet (simulated HashPack)
-  isWalletConnected: boolean;
-  isWalletConnecting: boolean;
-  accountId: string | null;
-  connectWallet: () => Promise<void>;
-  disconnectWallet: () => void;
-
-  // Chat
   messages: ChatMessage[];
   isAiThinking: boolean;
   sendUserMessage: (text: string) => void;
 
-  // Commerce / AP2 gate
   commerceState: CommercePanelState;
   commerceError: string | null;
-  /** Returns false if wallet is not connected (sets error message). */
-  startPaymentProcessing: () => boolean;
-  completePaymentSuccess: () => void;
-  setCommerceError: (message: string | null) => void;
+  lastTransactionId: string | null;
+  startPaymentProcessing: () => void;
+  completePaymentSuccess: (transactionId: string) => void;
+  failPayment: (message: string) => void;
   resetCommerce: () => void;
 }
 
@@ -64,30 +54,15 @@ function nextId() {
 }
 
 export function LiquiFlowProvider({ children }: { children: ReactNode }) {
-  const [isWalletConnected, setIsWalletConnected] = useState(false);
-  const [isWalletConnecting, setIsWalletConnecting] = useState(false);
-  const [accountId, setAccountId] = useState<string | null>(null);
-
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isAiThinking, setIsAiThinking] = useState(false);
 
   const [commerceState, setCommerceState] =
     useState<CommercePanelState>("idle");
   const [commerceError, setCommerceError] = useState<string | null>(null);
-
-  const connectWallet = useCallback(async () => {
-    setIsWalletConnecting(true);
-    // Simulate HashPack pairing delay
-    await new Promise((r) => setTimeout(r, 800));
-    setIsWalletConnected(true);
-    setAccountId(MOCK_HASHPACK_ACCOUNT);
-    setIsWalletConnecting(false);
-  }, []);
-
-  const disconnectWallet = useCallback(() => {
-    setIsWalletConnected(false);
-    setAccountId(null);
-  }, []);
+  const [lastTransactionId, setLastTransactionId] = useState<string | null>(
+    null,
+  );
 
   const sendUserMessage = useCallback((text: string) => {
     const trimmed = text.trim();
@@ -100,7 +75,6 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
     setIsAiThinking(true);
     setCommerceError(null);
 
-    // Mock AI: think 1.5s, then reply and open AP2 payment gate
     setTimeout(() => {
       setMessages((prev) => [
         ...prev,
@@ -111,71 +85,58 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
     }, 1500);
   }, [isAiThinking]);
 
-  const startPaymentProcessing = useCallback((): boolean => {
+  const startPaymentProcessing = useCallback(() => {
     setCommerceError(null);
-
-    if (!isWalletConnected) {
-      setCommerceError("Please connect your wallet first.");
-      return false;
-    }
-
     setCommerceState("processing");
-    return true;
-  }, [isWalletConnected]);
+  }, []);
 
-  const completePaymentSuccess = useCallback(() => {
+  const completePaymentSuccess = useCallback((transactionId: string) => {
+    setLastTransactionId(transactionId);
     setCommerceState("success");
     setMessages((prev) => [
       ...prev,
       {
         id: nextId(),
         role: "assistant",
-        content:
-          "Transaction Successful! Tokens swapped and routed to Merchant.",
+        content: `Transaction Successful! Tokens swapped and routed to Merchant.\n\nHedera Tx ID: ${transactionId}`,
       },
     ]);
   }, []);
 
-  const setCommerceErrorMessage = useCallback((message: string | null) => {
+  const failPayment = useCallback((message: string) => {
     setCommerceError(message);
+    setCommerceState("payment_required");
   }, []);
 
   const resetCommerce = useCallback(() => {
     setCommerceState("idle");
     setCommerceError(null);
+    setLastTransactionId(null);
   }, []);
 
   const value = useMemo<LiquiFlowContextValue>(
     () => ({
-      isWalletConnected,
-      isWalletConnecting,
-      accountId,
-      connectWallet,
-      disconnectWallet,
       messages,
       isAiThinking,
       sendUserMessage,
       commerceState,
       commerceError,
+      lastTransactionId,
       startPaymentProcessing,
       completePaymentSuccess,
-      setCommerceError: setCommerceErrorMessage,
+      failPayment,
       resetCommerce,
     }),
     [
-      isWalletConnected,
-      isWalletConnecting,
-      accountId,
-      connectWallet,
-      disconnectWallet,
       messages,
       isAiThinking,
       sendUserMessage,
       commerceState,
       commerceError,
+      lastTransactionId,
       startPaymentProcessing,
       completePaymentSuccess,
-      setCommerceErrorMessage,
+      failPayment,
       resetCommerce,
     ],
   );

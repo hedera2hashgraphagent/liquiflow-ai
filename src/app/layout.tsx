@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { LiquiFlowProvider } from "@/providers/LiquiFlowProvider";
+import { WalletProvider } from "@/providers/WalletProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,7 +31,9 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-zinc-950 text-zinc-100">
-        <LiquiFlowProvider>{children}</LiquiFlowProvider>
+        <WalletProvider>
+          <LiquiFlowProvider>{children}</LiquiFlowProvider>
+        </WalletProvider>
       </body>
     </html>
   );

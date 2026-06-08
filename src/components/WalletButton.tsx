@@ -1,37 +1,52 @@
 "use client";
 
-import { useLiquiFlow } from "@/providers/LiquiFlowProvider";
+import { useWallet } from "@/providers/WalletProvider";
 
-/** Simulated HashPack connect — glows green when connected. */
+/** Opens real HashPack pairing via WalletConnect on Hedera Testnet. */
 export function WalletButton() {
   const {
-    isWalletConnected,
-    isWalletConnecting,
     accountId,
-    connectWallet,
-    disconnectWallet,
-  } = useLiquiFlow();
+    isConnected,
+    isConnecting,
+    isInitialized,
+    walletError,
+    connect,
+    disconnect,
+  } = useWallet();
 
-  if (isWalletConnected && accountId) {
+  if (isConnected && accountId) {
     return (
-      <button
-        type="button"
-        onClick={disconnectWallet}
-        className="wallet-connected-glow rounded-lg border border-emerald-500/60 bg-emerald-500/15 px-4 py-2 font-mono text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25"
-      >
-        Connected: {accountId}
-      </button>
+      <div className="flex flex-col items-end gap-1">
+        <button
+          type="button"
+          onClick={() => disconnect()}
+          className="wallet-connected-glow rounded-lg border border-emerald-500/60 bg-emerald-500/15 px-4 py-2 font-mono text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25"
+        >
+          Connected: {accountId}
+        </button>
+      </div>
     );
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => connectWallet()}
-      disabled={isWalletConnecting}
-      className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-900/30 transition hover:from-emerald-500 hover:to-teal-400 disabled:opacity-60"
-    >
-      {isWalletConnecting ? "Connecting…" : "Connect Wallet"}
-    </button>
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={() => connect()}
+        disabled={isConnecting || !isInitialized}
+        className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-900/30 transition hover:from-emerald-500 hover:to-teal-400 disabled:opacity-60"
+      >
+        {isConnecting
+          ? "Pairing HashPack…"
+          : !isInitialized
+            ? "Initializing…"
+            : "Connect Wallet"}
+      </button>
+      {walletError && (
+        <span className="max-w-[260px] text-right text-[10px] text-amber-400">
+          {walletError}
+        </span>
+      )}
+    </div>
   );
 }

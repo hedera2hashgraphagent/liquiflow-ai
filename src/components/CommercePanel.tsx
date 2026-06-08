@@ -1,11 +1,12 @@
 "use client";
 
-import { executeAP2Payment } from "@/lib/hederaService";
+import { useState } from "react";
 import {
   AP2_EXECUTION_FEE_HBAR,
   useLiquiFlow,
   type CommercePanelState,
 } from "@/providers/LiquiFlowProvider";
+import { useWallet } from "@/providers/WalletProvider";
 
 const STATE_LABELS: Record<CommercePanelState, string> = {
   idle: "Awaiting Request",
@@ -18,15 +19,17 @@ export function CommercePanel() {
   const {
     commerceState,
     commerceError,
-    isWalletConnected,
+    lastTransactionId,
     startPaymentProcessing,
     completePaymentSuccess,
+    failPayment,
     resetCommerce,
   } = useLiquiFlow();
 
+  const { isConnected } = useWallet();
+
   return (
     <aside className="flex h-full w-full flex-col border-l border-zinc-800/80 bg-zinc-950/60 lg:w-[380px] lg:shrink-0">
-      {/* Panel header */}
       <div className="border-b border-zinc-800/80 px-5 py-4">
         <div className="flex items-center justify-between">
           <div>
@@ -51,7 +54,6 @@ export function CommercePanel() {
         </div>
       </div>
 
-      {/* Panel body — state-driven */}
       <div className="flex flex-1 flex-col p-5">
         <div
           key={commerceState}
@@ -61,18 +63,18 @@ export function CommercePanel() {
           {commerceState === "payment_required" && (
             <PaymentRequiredView
               error={commerceError}
-              onStartPayment={startPaymentProcessing}
-              onPaymentSuccess={completePaymentSuccess}
+              onFail={failPayment}
+              onStart={startPaymentProcessing}
+              onSuccess={completePaymentSuccess}
             />
           )}
           {commerceState === "processing" && <ProcessingView />}
           {commerceState === "success" && (
-            <SuccessView onReset={resetCommerce} />
+            <SuccessView transactionId={lastTransactionId} onReset={resetCommerce} />
           )}
         </div>
 
-        {/* Wallet hint */}
-        {!isWalletConnected && commerceState === "payment_required" && (
+        {!isConnected && commerceState === "payment_required" && (
           <p className="mt-4 text-center text-xs text-amber-400/90 transition-opacity duration-300">
             Connect HashPack in the header to pay execution fees.
           </p>
@@ -113,20 +115,39 @@ function IdleView() {
 
 function PaymentRequiredView({
   error,
-  onStartPayment,
-  onPaymentSuccess,
+  onFail,
+  onStart,
+  onSuccess,
 }: {
   error: string | null;
-  onStartPayment: () => boolean;
-  onPaymentSuccess: () => void;
+  onFail: (message: string) => void;
+  onStart: () => void;
+  onSuccess: (transactionId: string) => void;
 }) {
-  function handlePay() {
-    if (!onStartPayment()) return;
+  const { isConnected, executeAP2Payment } = useWallet();
+  const [isPaying, setIsPaying] = useState(false);
 
-    // In a fully production-ready environment, we would call executeAP2Payment() here via HashPack signing. For the hackathon demo, we simulate the ledger confirmation delay.
-    setTimeout(() => {
-      onPaymentSuccess();
-    }, 2000);
+  async function handlePay() {
+    if (!isConnected) {
+      onFail("Please connect your wallet first.");
+      return;
+    }
+
+    setIsPaying(true);
+    onStart();
+
+    try {
+      const transactionId = await executeAP2Payment(AP2_EXECUTION_FEE_HBAR);
+      onSuccess(transactionId);
+    } catch (err) {
+      onFail(
+        err instanceof Error
+          ? err.message
+          : "Payment failed. Please try again.",
+      );
+    } finally {
+      setIsPaying(false);
+    }
   }
 
   return (
@@ -140,8 +161,8 @@ function PaymentRequiredView({
           <span className="text-lg font-medium text-emerald-400">ℏ</span>
         </p>
         <p className="mt-2 text-sm text-zinc-400">
-          Network execution fee to unlock cross-chain settlement via the Agentic
-          Commerce Protocol.
+          Real Hedera Testnet transfer — signed in HashPack and settled as an
+          MPP split (8 ℏ + 2 ℏ).
         </p>
 
         <ul className="mt-4 space-y-2 border-t border-zinc-800/80 pt-4 text-xs text-zinc-500">
@@ -163,7 +184,7 @@ function PaymentRequiredView({
       {error && (
         <p
           role="alert"
-          className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-center text-sm text-amber-300 transition-all duration-300"
+          className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-center text-sm text-red-300 transition-all duration-300"
         >
           {error}
         </p>
@@ -172,9 +193,12 @@ function PaymentRequiredView({
       <button
         type="button"
         onClick={handlePay}
-        className="wallet-glow mt-6 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 py-4 text-sm font-bold text-zinc-950 shadow-lg shadow-emerald-500/25 transition hover:from-emerald-400 hover:to-teal-300 hover:shadow-emerald-500/40 active:scale-[0.98]"
+        disabled={isPaying}
+        className="wallet-glow mt-6 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 py-4 text-sm font-bold text-zinc-950 shadow-lg shadow-emerald-500/25 transition hover:from-emerald-400 hover:to-teal-300 hover:shadow-emerald-500/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Pay {AP2_EXECUTION_FEE_HBAR} HBAR to Execute
+        {isPaying
+          ? "Awaiting HashPack signature…"
+          : `Pay ${AP2_EXECUTION_FEE_HBAR} HBAR to Execute`}
       </button>
     </div>
   );
@@ -211,13 +235,19 @@ function ProcessingView() {
         Processing via Hedera Testnet…
       </p>
       <p className="mt-2 text-xs text-zinc-500">
-        Signing MPP transfer and routing tokens to merchant.
+        Confirm the MPP transfer in HashPack if prompted.
       </p>
     </div>
   );
 }
 
-function SuccessView({ onReset }: { onReset: () => void }) {
+function SuccessView({
+  transactionId,
+  onReset,
+}: {
+  transactionId: string | null;
+  onReset: () => void;
+}) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center text-center">
       <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-emerald-500/50 bg-emerald-500/15 shadow-lg shadow-emerald-500/20">
@@ -241,6 +271,11 @@ function SuccessView({ onReset }: { onReset: () => void }) {
       <p className="mt-2 max-w-[260px] text-sm leading-relaxed text-zinc-400">
         Tokens swapped and routed to Merchant.
       </p>
+      {transactionId && (
+        <p className="mt-3 break-all font-mono text-[10px] text-zinc-500">
+          {transactionId}
+        </p>
+      )}
       <button
         type="button"
         onClick={onReset}
