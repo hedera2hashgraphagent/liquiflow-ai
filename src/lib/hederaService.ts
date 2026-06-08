@@ -1,14 +1,12 @@
 /**
  * Hedera ledger service — AP2 / MPP payment execution.
  *
- * Demonstrates authentic @hashgraph/sdk usage for hackathon judges:
- *   - Client.forTestnet() initialization
- *   - Multi-Party Payment (MPP) TransferTransaction construction
- *   - Submission via .execute(client) with receipt validation
+ * Server-side path using @hashgraph/sdk:
+ *   - Client.forTestnet() with operator from environment
+ *   - MPP TransferTransaction with explicit node + freezeWith(client)
+ *   - .execute(client) with receipt validation
  *
- * Production note: the payer's keys live in HashPack. In that flow the
- * transaction is frozen and submitted with executeWithSigner(walletSigner)
- * instead of a server-side operator. This module shows the on-ledger shape.
+ * Browser / HashPack path uses freezeWithSigner() via WalletProvider instead.
  */
 
 import {
@@ -24,13 +22,15 @@ import {
 export const MPP_TREASURY_EXECUTOR = "0.0.11111";
 export const MPP_TREASURY_NETWORK = "0.0.22222";
 
+/** Well-known Hedera Testnet consensus node */
+export const HEDERA_TESTNET_NODE_ID = "0.0.3";
+
 /** Result returned after a successful AP2 MPP payment submission. */
 export interface AP2PaymentResult {
   transactionId: string;
   status: string;
   payerAccountId: string;
   totalHbar: number;
-  /** MPP split — each treasury credit in the same atomic transfer */
   mppRecipients: Array<{ accountId: string; amountHbar: number }>;
 }
 
@@ -64,8 +64,8 @@ export function calculateMPPSplit(totalHbar: number): {
 }
 
 /**
- * Builds the AP2 MPP TransferTransaction without submitting it.
- * Useful for HashPack freezeWithSigner / executeWithSigner integration.
+ * Builds the AP2 MPP TransferTransaction without freezing.
+ * Wallet flows call freezeWithSigner(); server flows call prepareAP2MPPTransaction().
  */
 export function buildAP2MPPTransaction(
   payerAccountId: string,
@@ -89,33 +89,55 @@ export function buildAP2MPPTransaction(
 }
 
 /**
- * Configures a Hedera Testnet client with operator credentials from env.
- * Required for server-side .execute() — wallet flows use executeWithSigner instead.
+ * Creates a Hedera Testnet client with operator credentials from environment.
+ * Required for server-side .execute() — never expose these keys to the browser.
  */
-function configureTestnetOperator(client: Client): void {
-  const operatorId = process.env.HEDERA_OPERATOR_ID;
-  const operatorKey = process.env.HEDERA_OPERATOR_PRIVATE_KEY;
+export function createTestnetClient(): Client {
+  const operatorId = process.env.HEDERA_OPERATOR_ID?.trim();
+  const operatorKey = process.env.HEDERA_OPERATOR_PRIVATE_KEY?.trim();
 
   if (!operatorId || !operatorKey) {
     throw new AP2PaymentError(
       "Missing HEDERA_OPERATOR_ID or HEDERA_OPERATOR_PRIVATE_KEY. " +
-        "Set these for server-side submission, or call buildAP2MPPTransaction() " +
-        "and sign via HashPack executeWithSigner() in the browser.",
+        "Add both to .env.local for server-side Testnet submission.",
     );
   }
 
-  client.setOperator(
-    AccountId.fromString(operatorId),
-    PrivateKey.fromStringED25519(operatorKey),
-  );
+  const client = Client.forTestnet();
+
+  // fromString auto-detects DER (302e...) and raw ED25519 key formats
+  const privateKey = PrivateKey.fromString(operatorKey);
+
+  client.setOperator(AccountId.fromString(operatorId), privateKey);
+
+  return client;
 }
 
 /**
- * Executes an AP2 Multi-Party Payment on Hedera Testnet.
+ * Assigns a Testnet node, attaches the client, and freezes the transaction.
+ * Must be called before .execute(client) to satisfy nodeAccountId requirements.
+ */
+export function prepareAP2MPPTransaction(
+  payerAccountId: string,
+  amount: number,
+  client: Client,
+): TransferTransaction {
+  const nodeAccountId = AccountId.fromString(HEDERA_TESTNET_NODE_ID);
+
+  return buildAP2MPPTransaction(payerAccountId, amount)
+    .setNodeAccountIds([nodeAccountId])
+    .freezeWith(client);
+}
+
+/**
+ * Executes an AP2 Multi-Party Payment on Hedera Testnet using the operator key.
  *
- * @param payerAccountId - Account debited for the full fee (e.g. "0.0.123456")
+ * Server-side: the operator account must be the payer (debit line) because only
+ * the operator key signs the transaction. For other payer accounts use HashPack
+ * executeWithSigner() in WalletProvider.
+ *
+ * @param payerAccountId - Must match HEDERA_OPERATOR_ID for server submission
  * @param amount           - Total HBAR fee (e.g. 10)
- * @returns Receipt metadata including transaction ID and MPP split breakdown
  */
 export async function executeAP2Payment(
   payerAccountId: string,
@@ -125,21 +147,33 @@ export async function executeAP2Payment(
     throw new AP2PaymentError("payerAccountId is required.");
   }
 
+  const operatorId = process.env.HEDERA_OPERATOR_ID?.trim();
+  const payer = payerAccountId.trim();
+
+  if (operatorId && payer !== operatorId) {
+    throw new AP2PaymentError(
+      `Server-side executeAP2Payment requires payerAccountId (${payer}) to match ` +
+        `HEDERA_OPERATOR_ID (${operatorId}). Connect HashPack to pay from a user wallet.`,
+    );
+  }
+
   const { executorShare, networkShare } = calculateMPPSplit(amount);
   const mppRecipients = [
     { accountId: MPP_TREASURY_EXECUTOR, amountHbar: executorShare },
     { accountId: MPP_TREASURY_NETWORK, amountHbar: networkShare },
   ];
 
-  const client = Client.forTestnet();
+  const client = createTestnetClient();
+  const effectivePayer = operatorId ?? payer;
 
   try {
-    configureTestnetOperator(client);
+    const frozenTransaction = prepareAP2MPPTransaction(
+      effectivePayer,
+      amount,
+      client,
+    );
 
-    const transaction = buildAP2MPPTransaction(payerAccountId, amount);
-
-    // Submit to Hedera consensus nodes and wait for the receipt
-    const txResponse = await transaction.execute(client);
+    const txResponse = await frozenTransaction.execute(client);
     const receipt = await txResponse.getReceipt(client);
 
     if (receipt.status !== Status.Success) {
@@ -151,7 +185,7 @@ export async function executeAP2Payment(
     return {
       transactionId: txResponse.transactionId.toString(),
       status: receipt.status.toString(),
-      payerAccountId,
+      payerAccountId: effectivePayer,
       totalHbar: amount,
       mppRecipients,
     };
