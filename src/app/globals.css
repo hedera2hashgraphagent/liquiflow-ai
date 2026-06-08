@@ -22,3 +22,78 @@ body {
 wcm-modal {
   z-index: 9999 !important;
 }
+
+/* Connected wallet — green glow */
+.wallet-connected-glow {
+  box-shadow:
+    0 0 12px rgba(16, 185, 129, 0.35),
+    0 0 24px rgba(16, 185, 129, 0.15);
+  animation: wallet-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes wallet-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 12px rgba(16, 185, 129, 0.35),
+      0 0 24px rgba(16, 185, 129, 0.15);
+  }
+  50% {
+    box-shadow:
+      0 0 18px rgba(16, 185, 129, 0.5),
+      0 0 36px rgba(16, 185, 129, 0.25);
+  }
+}
+
+/* AP2 pay button — prominent glow */
+.wallet-glow {
+  animation: pay-glow 2s ease-in-out infinite;
+}
+
+@keyframes pay-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 4px 24px rgba(16, 185, 129, 0.25),
+      0 0 0 0 rgba(16, 185, 129, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 4px 32px rgba(16, 185, 129, 0.45),
+      0 0 0 6px rgba(16, 185, 129, 0.08);
+  }
+}
+
+/* Tailwind-style enter animations (no plugin required) */
+.animate-in {
+  animation-duration: 0.4s;
+  animation-fill-mode: both;
+}
+
+.fade-in {
+  animation-name: fade-in;
+}
+
+.slide-in-from-right-2 {
+  animation-name: slide-in-right;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
