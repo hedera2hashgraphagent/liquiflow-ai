@@ -1,12 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { calculateAP2Split } from "@/lib/ap2";
+import { getHashscanTxUrl } from "@/lib/hedera-constants";
 import {
   AP2_EXECUTION_FEE_HBAR,
   useLiquiFlow,
   type CommercePanelState,
 } from "@/providers/LiquiFlowProvider";
 import { useWallet } from "@/providers/WalletProvider";
+
+const { merchantSettlement, agentCommission } =
+  calculateAP2Split(AP2_EXECUTION_FEE_HBAR);
 
 const STATE_LABELS: Record<CommercePanelState, string> = {
   idle: "Awaiting Request",
@@ -162,7 +167,7 @@ function PaymentRequiredView({
         </p>
         <p className="mt-2 text-sm text-zinc-400">
           Real Hedera Testnet transfer — signed in HashPack and settled as an
-          MPP split (8 ℏ + 2 ℏ).
+          MPP split ({merchantSettlement} ℏ + {agentCommission} ℏ).
         </p>
 
         <ul className="mt-4 space-y-2 border-t border-zinc-800/80 pt-4 text-xs text-zinc-500">
@@ -271,10 +276,31 @@ function SuccessView({
       <p className="mt-2 max-w-[260px] text-sm leading-relaxed text-zinc-400">
         Tokens swapped and routed to Merchant.
       </p>
+
+      <ul className="mt-4 w-full max-w-[260px] space-y-1.5 rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-4 py-3 text-left text-xs text-zinc-400">
+        <li className="flex justify-between gap-3">
+          <span>Merchant Settlement</span>
+          <span className="font-mono text-emerald-400/90">
+            {merchantSettlement} HBAR
+          </span>
+        </li>
+        <li className="flex justify-between gap-3">
+          <span>Agent Commission</span>
+          <span className="font-mono text-emerald-400/90">
+            {agentCommission} HBAR
+          </span>
+        </li>
+      </ul>
+
       {transactionId && (
-        <p className="mt-3 break-all font-mono text-[10px] text-zinc-500">
+        <a
+          href={getHashscanTxUrl(transactionId)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 break-all font-mono text-[10px] text-emerald-400/90 underline decoration-emerald-500/40 underline-offset-2 transition hover:text-emerald-300 hover:decoration-emerald-400"
+        >
           {transactionId}
-        </p>
+        </a>
       )}
       <button
         type="button"

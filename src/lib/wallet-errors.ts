@@ -28,7 +28,7 @@ export function parseWalletError(error: unknown): string {
   }
 
   if (lower.includes("insufficient") || lower.includes("insufficient_payer_balance")) {
-    return "Insufficient HBAR balance to cover the 10 ℏ execution fee.";
+    return "Insufficient HBAR balance to cover the 0.2 ℏ execution fee.";
   }
 
   if (lower.includes("invalid account") || lower.includes("account_id")) {

@@ -14,10 +14,10 @@ import {
   type ReactNode,
 } from "react";
 
-export const AP2_EXECUTION_FEE_HBAR = 10;
+export const AP2_EXECUTION_FEE_HBAR = 0.2;
 
 export const AI_PAYMENT_GATE_MESSAGE =
-  "I have found the optimal routing for your request. To execute this cross-chain transaction via the Agentic Commerce Protocol (ACP), a network execution fee of 10 HBAR is required.";
+  "I have found the optimal routing for your request. To execute this cross-chain transaction via the Agentic Commerce Protocol (ACP), a network execution fee of 0.2 HBAR is required.";
 
 export type CommercePanelState =
   | "idle"
@@ -29,6 +29,8 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  /** Set on successful payment — rendered as a HashScan link in chat. */
+  transactionId?: string;
 }
 
 interface LiquiFlowContextValue {
@@ -98,7 +100,9 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
       {
         id: nextId(),
         role: "assistant",
-        content: `Transaction Successful! Tokens swapped and routed to Merchant.\n\nHedera Tx ID: ${transactionId}`,
+        content:
+          "Transaction Successful! Tokens swapped and routed to Merchant.",
+        transactionId,
       },
     ]);
   }, []);

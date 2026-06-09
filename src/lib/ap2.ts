@@ -29,13 +29,32 @@ export interface AP2PaymentRequest {
 }
 
 /** Placeholder treasury / fee-split accounts for Hedera Testnet demo. */
-export const AP2_DEFAULT_RECIPIENTS: AP2SplitRecipient[] = [
-  { account: "0.0.11111", amount: 8 },
-  { account: "0.0.22222", amount: 2 },
-];
+export const MPP_MERCHANT_ACCOUNT = "0.0.11111";
+export const MPP_AGENT_ACCOUNT = "0.0.22222";
 
 /** Default premium execution fee (HBAR). */
-export const AP2_DEFAULT_FEE_HBAR = 10;
+export const AP2_DEFAULT_FEE_HBAR = 0.2;
+
+/** 80/20 MPP split for a given total fee. */
+export function calculateAP2Split(totalHbar: number): {
+  merchantSettlement: number;
+  agentCommission: number;
+} {
+  const merchantSettlement = Math.round(totalHbar * 0.8 * 100) / 100;
+  const agentCommission = Math.round((totalHbar - merchantSettlement) * 100) / 100;
+  return { merchantSettlement, agentCommission };
+}
+
+function buildDefaultSplitRecipients(totalHbar: number): AP2SplitRecipient[] {
+  const { merchantSettlement, agentCommission } = calculateAP2Split(totalHbar);
+  return [
+    { account: MPP_MERCHANT_ACCOUNT, amount: merchantSettlement },
+    { account: MPP_AGENT_ACCOUNT, amount: agentCommission },
+  ];
+}
+
+export const AP2_DEFAULT_RECIPIENTS: AP2SplitRecipient[] =
+  buildDefaultSplitRecipients(AP2_DEFAULT_FEE_HBAR);
 
 /**
  * Builds a valid AP2 payment request object.
@@ -44,11 +63,9 @@ export const AP2_DEFAULT_FEE_HBAR = 10;
 export function createAP2PaymentRequest(
   overrides?: Partial<Omit<AP2PaymentRequest, "type">>,
 ): AP2PaymentRequest {
+  const amount_hbar = overrides?.amount_hbar ?? AP2_DEFAULT_FEE_HBAR;
   const split_recipients =
-    overrides?.split_recipients ?? AP2_DEFAULT_RECIPIENTS;
-  const amount_hbar =
-    overrides?.amount_hbar ??
-    split_recipients.reduce((sum, r) => sum + r.amount, 0);
+    overrides?.split_recipients ?? buildDefaultSplitRecipients(amount_hbar);
 
   return {
     type: "ap2_payment_request",

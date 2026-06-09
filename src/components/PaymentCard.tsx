@@ -9,6 +9,7 @@
 
 import { useState } from "react";
 import type { AP2PaymentRequest } from "@/lib/ap2";
+import { getHashscanTxUrl } from "@/lib/hedera-constants";
 import { useWallet } from "@/providers/WalletProvider";
 
 interface PaymentCardProps {
@@ -91,8 +92,17 @@ export function PaymentCard({ payment, onPaymentSuccess }: PaymentCardProps) {
 
         {status === "success" && txId && (
           <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3">
-            <p className="text-xs font-medium text-emerald-400">Payment confirmed</p>
-            <p className="mt-1 break-all font-mono text-xs text-zinc-300">{txId}</p>
+            <p className="text-xs font-medium text-emerald-400">
+              Transaction Successful
+            </p>
+            <a
+              href={getHashscanTxUrl(txId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 block break-all font-mono text-xs text-emerald-300/90 underline decoration-emerald-500/40 underline-offset-2 transition hover:text-emerald-200 hover:decoration-emerald-400"
+            >
+              {txId}
+            </a>
           </div>
         )}
 

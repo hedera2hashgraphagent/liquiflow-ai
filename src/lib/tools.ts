@@ -53,7 +53,7 @@ export const requestAP2Payment = tool({
     amount_hbar: z
       .number()
       .optional()
-      .describe("Total fee in HBAR (default 10)"),
+      .describe("Total fee in HBAR (default 0.2)"),
     reason: z
       .string()
       .optional()

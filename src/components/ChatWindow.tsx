@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { getHashscanTxUrl } from "@/lib/hedera-constants";
 import { useLiquiFlow } from "@/providers/LiquiFlowProvider";
 
 const SUGGESTED_PROMPT = "I want to buy the Premium DeFi Node";
@@ -64,6 +65,16 @@ export function ChatWindow() {
                 </p>
               )}
               <p className="whitespace-pre-wrap">{msg.content}</p>
+              {msg.transactionId && (
+                <a
+                  href={getHashscanTxUrl(msg.transactionId)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 block break-all font-mono text-xs text-emerald-400/90 underline decoration-emerald-500/40 underline-offset-2 transition hover:text-emerald-300 hover:decoration-emerald-400"
+                >
+                  {msg.transactionId}
+                </a>
+              )}
             </div>
           </div>
         ))}
