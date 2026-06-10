@@ -5,6 +5,18 @@
  * Wallet connection is handled by WalletProvider (real HashPack / WC).
  */
 
+import type { AP2PaymentRequest } from "@/lib/ap2";
+import { createMarketplacePaymentRequest } from "@/lib/ap2";
+import type { HederaPaymentReceipt } from "@/lib/hedera-constants";
+import {
+  buildMatchmakingReply,
+  calculateMarketplaceTotal,
+  extractCategoryIntent,
+  findCheapestService,
+  MARKETPLACE_CATEGORIES,
+  PLATFORM_NETWORK_FEE_HBAR,
+  type ServiceListing,
+} from "@/lib/mockServicesDb";
 import {
   createContext,
   useCallback,
@@ -13,11 +25,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-
-export const AP2_EXECUTION_FEE_HBAR = 0.2;
-
-export const AI_PAYMENT_GATE_MESSAGE =
-  "I have found the optimal routing for your request. To execute this cross-chain transaction via the Agentic Commerce Protocol (ACP), a network execution fee of 0.2 HBAR is required.";
 
 export type CommercePanelState =
   | "idle"
@@ -31,6 +38,7 @@ export interface ChatMessage {
   content: string;
   /** Set on successful payment — rendered as a HashScan link in chat. */
   transactionId?: string;
+  consensusTimestamp?: string | null;
 }
 
 interface LiquiFlowContextValue {
@@ -40,9 +48,14 @@ interface LiquiFlowContextValue {
 
   commerceState: CommercePanelState;
   commerceError: string | null;
-  lastTransactionId: string | null;
+  lastPaymentReceipt: HederaPaymentReceipt | null;
+  selectedService: ServiceListing | null;
+  paymentRequest: AP2PaymentRequest | null;
+  platformNetworkFeeHbar: number;
+  paymentTotalHbar: number;
+
   startPaymentProcessing: () => void;
-  completePaymentSuccess: (transactionId: string) => void;
+  completePaymentSuccess: (receipt: HederaPaymentReceipt) => void;
   failPayment: (message: string) => void;
   resetCommerce: () => void;
 }
@@ -62,9 +75,17 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
   const [commerceState, setCommerceState] =
     useState<CommercePanelState>("idle");
   const [commerceError, setCommerceError] = useState<string | null>(null);
-  const [lastTransactionId, setLastTransactionId] = useState<string | null>(
+  const [lastPaymentReceipt, setLastPaymentReceipt] =
+    useState<HederaPaymentReceipt | null>(null);
+  const [selectedService, setSelectedService] = useState<ServiceListing | null>(
     null,
   );
+  const [paymentRequest, setPaymentRequest] =
+    useState<AP2PaymentRequest | null>(null);
+
+  const paymentTotalHbar = selectedService
+    ? calculateMarketplaceTotal(selectedService.priceHbar)
+    : 0;
 
   const sendUserMessage = useCallback((text: string) => {
     const trimmed = text.trim();
@@ -78,9 +99,49 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
     setCommerceError(null);
 
     setTimeout(() => {
+      const category = extractCategoryIntent(trimmed);
+
+      if (!category) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            role: "assistant",
+            content:
+              `I couldn't determine which intellectual service you need. ` +
+              `Try asking for one of: ${MARKETPLACE_CATEGORIES.join(", ")}.`,
+          },
+        ]);
+        setIsAiThinking(false);
+        return;
+      }
+
+      const cheapest = findCheapestService(category);
+
+      if (!cheapest) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            role: "assistant",
+            content: `No providers are listed for '${category}' right now. Please try another category.`,
+          },
+        ]);
+        setIsAiThinking(false);
+        return;
+      }
+
+      const request = createMarketplacePaymentRequest(cheapest);
+
+      setSelectedService(cheapest);
+      setPaymentRequest(request);
       setMessages((prev) => [
         ...prev,
-        { id: nextId(), role: "assistant", content: AI_PAYMENT_GATE_MESSAGE },
+        {
+          id: nextId(),
+          role: "assistant",
+          content: buildMatchmakingReply(cheapest),
+        },
       ]);
       setIsAiThinking(false);
       setCommerceState("payment_required");
@@ -92,20 +153,30 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
     setCommerceState("processing");
   }, []);
 
-  const completePaymentSuccess = useCallback((transactionId: string) => {
-    setLastTransactionId(transactionId);
-    setCommerceState("success");
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: nextId(),
-        role: "assistant",
-        content:
-          "Transaction Successful! Tokens swapped and routed to Merchant.",
-        transactionId,
-      },
-    ]);
-  }, []);
+  const completePaymentSuccess = useCallback(
+    (receipt: HederaPaymentReceipt) => {
+      setLastPaymentReceipt(receipt);
+      setCommerceState("success");
+
+      const providerName = selectedService?.providerName ?? "Expert";
+      const servicePrice = selectedService?.priceHbar ?? 0;
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: "assistant",
+          content:
+            `Transaction Successful! Your session with ${providerName} is confirmed.\n\n` +
+            `Expert Settlement (${providerName}): ${servicePrice} HBAR\n` +
+            `Platform Network Fee: ${PLATFORM_NETWORK_FEE_HBAR} HBAR`,
+          transactionId: receipt.transactionId,
+          consensusTimestamp: receipt.consensusTimestamp,
+        },
+      ]);
+    },
+    [selectedService],
+  );
 
   const failPayment = useCallback((message: string) => {
     setCommerceError(message);
@@ -115,7 +186,9 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
   const resetCommerce = useCallback(() => {
     setCommerceState("idle");
     setCommerceError(null);
-    setLastTransactionId(null);
+    setLastPaymentReceipt(null);
+    setSelectedService(null);
+    setPaymentRequest(null);
   }, []);
 
   const value = useMemo<LiquiFlowContextValue>(
@@ -125,7 +198,11 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
       sendUserMessage,
       commerceState,
       commerceError,
-      lastTransactionId,
+      lastPaymentReceipt,
+      selectedService,
+      paymentRequest,
+      platformNetworkFeeHbar: PLATFORM_NETWORK_FEE_HBAR,
+      paymentTotalHbar,
       startPaymentProcessing,
       completePaymentSuccess,
       failPayment,
@@ -137,7 +214,10 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
       sendUserMessage,
       commerceState,
       commerceError,
-      lastTransactionId,
+      lastPaymentReceipt,
+      selectedService,
+      paymentRequest,
+      paymentTotalHbar,
       startPaymentProcessing,
       completePaymentSuccess,
       failPayment,

@@ -2,7 +2,7 @@
  * Hedera ledger service — AP2 / MPP payment execution (Testnet).
  *
  * Server-side operator flow:
- *   1. Client.forTestnet() + setOperator(env credentials)
+ *   1. Client.forNetwork({ "0.0.3": "testnet.hedera.com:50211" }) + setOperator(env)
  *   2. TransferTransaction with explicit node 0.0.3
  *   3. freezeWith(client) → signWithOperator(client) → execute(client)
  */
@@ -15,7 +15,13 @@ import {
   Status,
   TransferTransaction,
 } from "@hashgraph/sdk";
-import { HEDERA_TESTNET_NODE_ID } from "./hedera-constants";
+import type { Timestamp } from "@hashgraph/sdk";
+import {
+  HEDERA_TESTNET_ENDPOINT,
+  HEDERA_TESTNET_MIRROR,
+  HEDERA_TESTNET_NODE_ID,
+  type HederaPaymentReceipt,
+} from "./hedera-constants";
 
 export { HEDERA_TESTNET_NODE_ID };
 
@@ -24,12 +30,16 @@ export const MPP_TREASURY_EXECUTOR = "0.0.11111";
 export const MPP_TREASURY_NETWORK = "0.0.22222";
 
 /** Result returned after a successful AP2 MPP payment submission. */
-export interface AP2PaymentResult {
-  transactionId: string;
+export interface AP2PaymentResult extends HederaPaymentReceipt {
   status: string;
   payerAccountId: string;
   totalHbar: number;
   mppRecipients: Array<{ accountId: string; amountHbar: number }>;
+}
+
+/** Formats a Hedera consensus timestamp for HashScan URLs. */
+export function formatConsensusTimestamp(timestamp: Timestamp): string {
+  return timestamp.toString();
 }
 
 /** Typed error for AP2 payment failures (validation, receipt, network). */
@@ -78,8 +88,23 @@ export function buildAP2MPPTransaction(
     .setTransactionMemo("LiquiFlow AP2 MPP execution fee");
 }
 
+function parseOperatorPrivateKey(raw: string): PrivateKey {
+  try {
+    return PrivateKey.fromString(raw);
+  } catch (primaryError) {
+    try {
+      return PrivateKey.fromStringDer(raw);
+    } catch {
+      throw new AP2PaymentError(
+        "HEDERA_OPERATOR_PRIVATE_KEY is invalid. Provide a DER- or hex-encoded Hedera private key.",
+        primaryError,
+      );
+    }
+  }
+}
+
 /**
- * Step 1 — Initialize Testnet client and set operator from .env.local.
+ * Initialize a Testnet client pinned to node 0.0.3 on testnet.hedera.com.
  * Never call this from the browser; operator keys must stay server-side.
  */
 export function createTestnetClient(): Client {
@@ -92,19 +117,22 @@ export function createTestnetClient(): Client {
     );
   }
 
-  const client = Client.forTestnet();
+  const client = Client.forNetwork({
+    [HEDERA_TESTNET_NODE_ID]: HEDERA_TESTNET_ENDPOINT,
+  });
 
+  client.setMirrorNetwork(HEDERA_TESTNET_MIRROR);
   client.setOperator(
     AccountId.fromString(operatorId),
-    PrivateKey.fromString(operatorKey),
+    parseOperatorPrivateKey(operatorKey),
   );
 
   return client;
 }
 
 /**
- * Step 2 & 3 — Attach client context, set Testnet node, and freeze.
- * freezeWith(client) is mandatory before execute(); it resolves nodeAccountIds.
+ * Attach client context, set Testnet node, and freeze.
+ * freezeWith(client) is mandatory before execute(); it assigns nodeAccountIds.
  */
 export function prepareAP2MPPTransaction(
   payerAccountId: string,
@@ -113,11 +141,10 @@ export function prepareAP2MPPTransaction(
 ): TransferTransaction {
   const nodeAccountId = AccountId.fromString(HEDERA_TESTNET_NODE_ID);
 
-  const transaction = buildAP2MPPTransaction(payerAccountId, amount)
+  return buildAP2MPPTransaction(payerAccountId, amount)
     .setNodeAccountIds([nodeAccountId])
-    .setMaxTransactionFee(new Hbar(5));
-
-  return transaction.freezeWith(client);
+    .setMaxTransactionFee(new Hbar(5))
+    .freezeWith(client);
 }
 
 /**
@@ -132,6 +159,10 @@ export async function executeAP2Payment(
 ): Promise<AP2PaymentResult> {
   if (!payerAccountId?.trim()) {
     throw new AP2PaymentError("payerAccountId is required.");
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new AP2PaymentError(`Invalid AP2 fee amount: ${amount} HBAR`);
   }
 
   const operatorId = process.env.HEDERA_OPERATOR_ID?.trim();
@@ -159,24 +190,29 @@ export async function executeAP2Payment(
   const client = createTestnetClient();
 
   try {
-    // Step 2–4: build → set node → freezeWith(client)
-    let transaction = prepareAP2MPPTransaction(payer, amount, client);
+    // 1. Build transfer with explicit node 0.0.3
+    // 2. freezeWith(client) — assigns transactionId + nodeAccountIds from client
+    const frozenTransaction = prepareAP2MPPTransaction(payer, amount, client);
 
-    // Operator signature (required for accounts debiting HBAR)
-    transaction = await transaction.signWithOperator(client);
+    // 3. Operator signs the frozen transaction (debits operator account)
+    const signedTransaction = await frozenTransaction.signWithOperator(client);
 
-    const txResponse = await transaction.execute(client);
-    const receipt = await txResponse.getReceipt(client);
+    // 4. Submit to Hedera Testnet consensus node
+    const txResponse = await signedTransaction.execute(client);
+    const record = await txResponse.getRecord(client);
 
-    if (receipt.status !== Status.Success) {
+    if (record.receipt.status !== Status.Success) {
       throw new AP2PaymentError(
-        `AP2 MPP payment failed with status: ${receipt.status.toString()}`,
+        `AP2 MPP payment failed with status: ${record.receipt.status.toString()}`,
       );
     }
 
+    const consensusTimestamp = formatConsensusTimestamp(record.consensusTimestamp);
+
     return {
-      transactionId: txResponse.transactionId.toString(),
-      status: receipt.status.toString(),
+      transactionId: record.transactionId.toString(),
+      consensusTimestamp,
+      status: record.receipt.status.toString(),
       payerAccountId: payer,
       totalHbar: amount,
       mppRecipients,

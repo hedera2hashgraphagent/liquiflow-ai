@@ -15,7 +15,16 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
+import type {
+  DAppConnector,
+  DAppSigner,
+} from "@hashgraph/hedera-wallet-connect";
+import type {
+  Transaction,
+  TransactionResponse,
+} from "@hiero-ledger/sdk";
+import type { HederaPaymentReceipt } from "@/lib/hedera-constants";
+import { resolveConsensusTimestamp } from "@/lib/hashscan";
 import { parseWalletError } from "@/lib/wallet-errors";
 import {
   HEDERA_JSON_RPC_METHODS,
@@ -47,7 +56,9 @@ export interface WalletContextValue {
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   /** HashPack signs & executes a real AP2 MPP transfer on Hedera Testnet */
-  executeAP2Payment: (amountHbar: number) => Promise<string>;
+  executeAP2Payment: (
+    payment: import("@/lib/ap2").AP2PaymentRequest,
+  ) => Promise<HederaPaymentReceipt>;
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null);
@@ -58,6 +69,14 @@ function isValidProjectId(projectId: string): boolean {
     projectId !== PLACEHOLDER_PROJECT_ID &&
     !projectId.startsWith("your_")
   );
+}
+
+/** HashPack sign-and-execute — routes SignAndExecuteTransaction via Signer.call(). */
+async function executeTransaction(
+  signer: DAppSigner,
+  transaction: Transaction,
+): Promise<TransactionResponse> {
+  return signer.call(transaction);
 }
 
 export function WalletProvider({ children }: { children: ReactNode }) {
@@ -173,33 +192,36 @@ export function WalletProvider({ children }: { children: ReactNode }) {
    * and submit to Hedera Testnet consensus nodes.
    */
   const executeAP2Payment = useCallback(
-    async (amountHbar: number): Promise<string> => {
+    async (
+      payment: import("@/lib/ap2").AP2PaymentRequest,
+    ): Promise<HederaPaymentReceipt> => {
       const connector = await ensureConnector();
       if (!connector || !accountId) {
         throw new Error("Connect HashPack before paying the execution fee.");
       }
 
       try {
-        const [{ AccountId }, { createAP2PaymentRequest }, { buildMPPTransferTransaction }] =
+        const [{ AccountId }, { buildMPPTransferTransaction }] =
           await Promise.all([
             import("@hiero-ledger/sdk"),
-            import("@/lib/ap2"),
             import("@/lib/mpp"),
           ]);
 
-        // MPP transaction — same split as hederaService.buildAP2MPPTransaction, typed for WalletConnect signer
-        const payment = createAP2PaymentRequest({ amount_hbar: amountHbar });
         const transaction = buildMPPTransferTransaction({
           payerAccountId: accountId,
           payment,
+          memo: `LiquiFlow marketplace — ${payment.reason}`,
         });
         const signer = connector.getSigner(AccountId.fromString(accountId));
 
-        // freezeWithSigner assigns node + valid start; node 0.0.3 set in mpp.ts
-        const frozen = await transaction.freezeWithSigner(signer);
-        const response = await frozen.executeWithSigner(signer);
+        const response = await executeTransaction(signer, transaction);
+        const transactionId = response.transactionId.toString();
+        const consensusTimestamp = await resolveConsensusTimestamp(transactionId);
 
-        return response.transactionId.toString();
+        return {
+          transactionId,
+          consensusTimestamp,
+        };
       } catch (error) {
         throw new Error(parseWalletError(error));
       }

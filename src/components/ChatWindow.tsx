@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getHashscanTxUrl } from "@/lib/hedera-constants";
+import { getHashscanExplorerUrl } from "@/lib/hashscan";
 import { useLiquiFlow } from "@/providers/LiquiFlowProvider";
 
-const SUGGESTED_PROMPT = "I want to buy the Premium DeFi Node";
+const SUGGESTED_PROMPT = "I need Web3 consulting";
 
 export function ChatWindow() {
   const [input, setInput] = useState("");
@@ -28,11 +28,12 @@ export function ChatWindow() {
         {messages.length === 0 && (
           <div className="mx-auto max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6 text-center transition-opacity duration-500">
             <p className="text-lg font-medium text-zinc-200">
-              Hedera Commerce Agent
+              Intellectual Services Marketplace
             </p>
             <p className="mt-2 text-sm text-zinc-500">
-              Ask for premium DeFi execution. The agent will route your request
-              and gate settlement via AP2 on Hedera Testnet.
+              Ask for a service category — Web3 consulting, smart contract
+              audits, legal advisory, and more. The agent finds the cheapest
+              provider and settles via AP2 on Hedera Testnet.
             </p>
             <button
               type="button"
@@ -66,14 +67,22 @@ export function ChatWindow() {
               )}
               <p className="whitespace-pre-wrap">{msg.content}</p>
               {msg.transactionId && (
-                <a
-                  href={getHashscanTxUrl(msg.transactionId)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 block break-all font-mono text-xs text-emerald-400/90 underline decoration-emerald-500/40 underline-offset-2 transition hover:text-emerald-300 hover:decoration-emerald-400"
-                >
-                  {msg.transactionId}
-                </a>
+                <>
+                  <a
+                    href={getHashscanExplorerUrl({
+                      transactionId: msg.transactionId,
+                      consensusTimestamp: msg.consensusTimestamp ?? null,
+                    })}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-block font-mono text-xs text-emerald-400/90 underline decoration-emerald-500/40 underline-offset-2 transition hover:text-emerald-300 hover:decoration-emerald-400"
+                  >
+                    View on HashScan
+                  </a>
+                  <p className="mt-1 break-all font-mono text-[10px] text-zinc-500">
+                    {msg.transactionId}
+                  </p>
+                </>
               )}
             </div>
           </div>
@@ -101,7 +110,7 @@ export function ChatWindow() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Describe your DeFi execution request…"
+            placeholder="e.g. I need Web3 consulting…"
             disabled={isAiThinking}
             className="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 transition focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/30 disabled:opacity-50"
           />

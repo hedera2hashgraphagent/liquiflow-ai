@@ -9,7 +9,8 @@
 
 import { useState } from "react";
 import type { AP2PaymentRequest } from "@/lib/ap2";
-import { getHashscanTxUrl } from "@/lib/hedera-constants";
+import type { HederaPaymentReceipt } from "@/lib/hedera-constants";
+import { getHashscanExplorerUrl } from "@/lib/hashscan";
 import { useWallet } from "@/providers/WalletProvider";
 
 interface PaymentCardProps {
@@ -22,7 +23,7 @@ export function PaymentCard({ payment, onPaymentSuccess }: PaymentCardProps) {
   const { isConnected, connect, executeAP2Payment } = useWallet();
   const [status, setStatus] = useState<"idle" | "paying" | "success" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
-  const [txId, setTxId] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<HederaPaymentReceipt | null>(null);
 
   async function handlePay() {
     setError(null);
@@ -39,10 +40,10 @@ export function PaymentCard({ payment, onPaymentSuccess }: PaymentCardProps) {
     setStatus("paying");
     try {
       // MPP: one TransferTransaction, multiple recipient credits
-      const transactionId = await executeAP2Payment(payment.amount_hbar);
-      setTxId(transactionId);
+      const paymentReceipt = await executeAP2Payment(payment);
+      setReceipt(paymentReceipt);
       setStatus("success");
-      onPaymentSuccess(transactionId);
+      onPaymentSuccess(paymentReceipt.transactionId);
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Payment failed");
@@ -90,19 +91,22 @@ export function PaymentCard({ payment, onPaymentSuccess }: PaymentCardProps) {
           </ul>
         </div>
 
-        {status === "success" && txId && (
+        {status === "success" && receipt && (
           <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3">
             <p className="text-xs font-medium text-emerald-400">
               Transaction Successful
             </p>
             <a
-              href={getHashscanTxUrl(txId)}
+              href={getHashscanExplorerUrl(receipt)}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-1 block break-all font-mono text-xs text-emerald-300/90 underline decoration-emerald-500/40 underline-offset-2 transition hover:text-emerald-200 hover:decoration-emerald-400"
+              className="mt-1 inline-block font-mono text-xs text-emerald-300/90 underline decoration-emerald-500/40 underline-offset-2 transition hover:text-emerald-200 hover:decoration-emerald-400"
             >
-              {txId}
+              View on HashScan
             </a>
+            <p className="mt-1 break-all font-mono text-[10px] text-zinc-500">
+              {receipt.transactionId}
+            </p>
           </div>
         )}
 

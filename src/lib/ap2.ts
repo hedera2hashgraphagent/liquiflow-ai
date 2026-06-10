@@ -35,6 +35,9 @@ export const MPP_AGENT_ACCOUNT = "0.0.22222";
 /** Default premium execution fee (HBAR). */
 export const AP2_DEFAULT_FEE_HBAR = 0.2;
 
+/** LiquiFlow marketplace platform / matchmaking fee (HBAR). */
+export const PLATFORM_NETWORK_FEE_HBAR = 0.05;
+
 /** 80/20 MPP split for a given total fee. */
 export function calculateAP2Split(totalHbar: number): {
   merchantSettlement: number;
@@ -55,6 +58,26 @@ function buildDefaultSplitRecipients(totalHbar: number): AP2SplitRecipient[] {
 
 export const AP2_DEFAULT_RECIPIENTS: AP2SplitRecipient[] =
   buildDefaultSplitRecipients(AP2_DEFAULT_FEE_HBAR);
+
+/** MPP split for intellectual-services marketplace settlements. */
+export function createMarketplacePaymentRequest(service: {
+  category: string;
+  providerName: string;
+  priceHbar: number;
+}): AP2PaymentRequest {
+  const amount_hbar =
+    Math.round((service.priceHbar + PLATFORM_NETWORK_FEE_HBAR) * 100) / 100;
+
+  return {
+    type: "ap2_payment_request",
+    amount_hbar,
+    reason: `${service.category} — ${service.providerName}`,
+    split_recipients: [
+      { account: MPP_MERCHANT_ACCOUNT, amount: service.priceHbar },
+      { account: MPP_AGENT_ACCOUNT, amount: PLATFORM_NETWORK_FEE_HBAR },
+    ],
+  };
+}
 
 /**
  * Builds a valid AP2 payment request object.

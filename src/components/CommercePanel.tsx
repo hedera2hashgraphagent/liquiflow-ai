@@ -1,17 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { calculateAP2Split } from "@/lib/ap2";
-import { getHashscanTxUrl } from "@/lib/hedera-constants";
+import type { HederaPaymentReceipt } from "@/lib/hedera-constants";
+import { getHashscanExplorerUrl } from "@/lib/hashscan";
 import {
-  AP2_EXECUTION_FEE_HBAR,
   useLiquiFlow,
   type CommercePanelState,
 } from "@/providers/LiquiFlowProvider";
 import { useWallet } from "@/providers/WalletProvider";
-
-const { merchantSettlement, agentCommission } =
-  calculateAP2Split(AP2_EXECUTION_FEE_HBAR);
 
 const STATE_LABELS: Record<CommercePanelState, string> = {
   idle: "Awaiting Request",
@@ -24,7 +20,11 @@ export function CommercePanel() {
   const {
     commerceState,
     commerceError,
-    lastTransactionId,
+    lastPaymentReceipt,
+    selectedService,
+    paymentRequest,
+    platformNetworkFeeHbar,
+    paymentTotalHbar,
     startPaymentProcessing,
     completePaymentSuccess,
     failPayment,
@@ -65,8 +65,12 @@ export function CommercePanel() {
           className="flex flex-1 flex-col transition-all duration-500 ease-out animate-in fade-in slide-in-from-right-2"
         >
           {commerceState === "idle" && <IdleView />}
-          {commerceState === "payment_required" && (
+          {commerceState === "payment_required" && selectedService && paymentRequest && (
             <PaymentRequiredView
+              service={selectedService}
+              paymentRequest={paymentRequest}
+              platformFee={platformNetworkFeeHbar}
+              totalHbar={paymentTotalHbar}
               error={commerceError}
               onFail={failPayment}
               onStart={startPaymentProcessing}
@@ -74,8 +78,13 @@ export function CommercePanel() {
             />
           )}
           {commerceState === "processing" && <ProcessingView />}
-          {commerceState === "success" && (
-            <SuccessView transactionId={lastTransactionId} onReset={resetCommerce} />
+          {commerceState === "success" && selectedService && (
+            <SuccessView
+              service={selectedService}
+              platformFee={platformNetworkFeeHbar}
+              receipt={lastPaymentReceipt}
+              onReset={resetCommerce}
+            />
           )}
         </div>
 
@@ -108,26 +117,34 @@ function IdleView() {
         </svg>
       </div>
       <p className="text-sm font-medium text-zinc-400">
-        No active commerce session
+        Intellectual Services Marketplace
       </p>
       <p className="mt-2 max-w-[240px] text-xs leading-relaxed text-zinc-600">
-        Send a request in the chat. When routing is ready, the AP2 payment gate
-        will appear here.
+        Ask for a service category in chat. The agent will match you with the
+        cheapest provider and open the AP2 payment gate here.
       </p>
     </div>
   );
 }
 
 function PaymentRequiredView({
+  service,
+  paymentRequest,
+  platformFee,
+  totalHbar,
   error,
   onFail,
   onStart,
   onSuccess,
 }: {
+  service: import("@/lib/mockServicesDb").ServiceListing;
+  paymentRequest: import("@/lib/ap2").AP2PaymentRequest;
+  platformFee: number;
+  totalHbar: number;
   error: string | null;
   onFail: (message: string) => void;
   onStart: () => void;
-  onSuccess: (transactionId: string) => void;
+  onSuccess: (receipt: HederaPaymentReceipt) => void;
 }) {
   const { isConnected, executeAP2Payment } = useWallet();
   const [isPaying, setIsPaying] = useState(false);
@@ -142,8 +159,8 @@ function PaymentRequiredView({
     onStart();
 
     try {
-      const transactionId = await executeAP2Payment(AP2_EXECUTION_FEE_HBAR);
-      onSuccess(transactionId);
+      const receipt = await executeAP2Payment(paymentRequest);
+      onSuccess(receipt);
     } catch (err) {
       onFail(
         err instanceof Error
@@ -161,27 +178,39 @@ function PaymentRequiredView({
         <p className="text-xs font-semibold uppercase tracking-widest text-emerald-500/80">
           AP2 Payment Gate
         </p>
+        <p className="mt-1 text-sm text-zinc-400">{service.category}</p>
+        <p className="mt-0.5 text-base font-semibold text-zinc-100">
+          {service.providerName}
+        </p>
         <p className="mt-3 text-3xl font-bold text-white">
-          {AP2_EXECUTION_FEE_HBAR}{" "}
+          {totalHbar}{" "}
           <span className="text-lg font-medium text-emerald-400">ℏ</span>
         </p>
         <p className="mt-2 text-sm text-zinc-400">
-          Real Hedera Testnet transfer — signed in HashPack and settled as an
-          MPP split ({merchantSettlement} ℏ + {agentCommission} ℏ).
+          Service {service.priceHbar} ℏ + network fee {platformFee} ℏ — settled
+          on Hedera Testnet via MPP.
         </p>
 
         <ul className="mt-4 space-y-2 border-t border-zinc-800/80 pt-4 text-xs text-zinc-500">
           <li className="flex justify-between">
-            <span>Protocol</span>
-            <span className="font-mono text-zinc-400">AP2 / ACP</span>
+            <span>Expert service</span>
+            <span className="font-mono text-zinc-300">
+              {service.priceHbar} HBAR
+            </span>
           </li>
           <li className="flex justify-between">
-            <span>Network</span>
-            <span className="font-mono text-zinc-400">Hedera Testnet</span>
+            <span>Platform network fee</span>
+            <span className="font-mono text-zinc-300">
+              {platformFee} HBAR
+            </span>
+          </li>
+          <li className="flex justify-between border-t border-zinc-800/60 pt-2 font-medium text-zinc-400">
+            <span>Total</span>
+            <span className="font-mono text-emerald-400">{totalHbar} HBAR</span>
           </li>
           <li className="flex justify-between">
-            <span>Settlement</span>
-            <span className="font-mono text-zinc-400">MPP Split</span>
+            <span>Rating</span>
+            <span className="font-mono text-zinc-400">★ {service.rating}</span>
           </li>
         </ul>
       </div>
@@ -203,7 +232,7 @@ function PaymentRequiredView({
       >
         {isPaying
           ? "Awaiting HashPack signature…"
-          : `Pay ${AP2_EXECUTION_FEE_HBAR} HBAR to Execute`}
+          : `Pay ${totalHbar} HBAR to Book Service`}
       </button>
     </div>
   );
@@ -247,10 +276,14 @@ function ProcessingView() {
 }
 
 function SuccessView({
-  transactionId,
+  service,
+  platformFee,
+  receipt,
   onReset,
 }: {
-  transactionId: string | null;
+  service: import("@/lib/mockServicesDb").ServiceListing;
+  platformFee: number;
+  receipt: HederaPaymentReceipt | null;
   onReset: () => void;
 }) {
   return (
@@ -274,33 +307,38 @@ function SuccessView({
         Transaction Successful!
       </p>
       <p className="mt-2 max-w-[260px] text-sm leading-relaxed text-zinc-400">
-        Tokens swapped and routed to Merchant.
+        Your session with {service.providerName} is confirmed.
       </p>
 
       <ul className="mt-4 w-full max-w-[260px] space-y-1.5 rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-4 py-3 text-left text-xs text-zinc-400">
         <li className="flex justify-between gap-3">
-          <span>Merchant Settlement</span>
-          <span className="font-mono text-emerald-400/90">
-            {merchantSettlement} HBAR
+          <span>Expert Settlement ({service.providerName})</span>
+          <span className="shrink-0 font-mono text-emerald-400/90">
+            {service.priceHbar} HBAR
           </span>
         </li>
         <li className="flex justify-between gap-3">
-          <span>Agent Commission</span>
+          <span>Platform Network Fee</span>
           <span className="font-mono text-emerald-400/90">
-            {agentCommission} HBAR
+            {platformFee} HBAR
           </span>
         </li>
       </ul>
 
-      {transactionId && (
+      {receipt?.transactionId && (
         <a
-          href={getHashscanTxUrl(transactionId)}
+          href={getHashscanExplorerUrl(receipt)}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-4 break-all font-mono text-[10px] text-emerald-400/90 underline decoration-emerald-500/40 underline-offset-2 transition hover:text-emerald-300 hover:decoration-emerald-400"
+          className="mt-4 font-mono text-[10px] text-emerald-400/90 underline decoration-emerald-500/40 underline-offset-2 transition hover:text-emerald-300 hover:decoration-emerald-400"
         >
-          {transactionId}
+          View on HashScan
         </a>
+      )}
+      {receipt?.transactionId && (
+        <p className="mt-2 break-all font-mono text-[10px] text-zinc-500">
+          {receipt.transactionId}
+        </p>
       )}
       <button
         type="button"
