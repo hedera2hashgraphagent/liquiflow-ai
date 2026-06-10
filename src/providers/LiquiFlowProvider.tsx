@@ -140,7 +140,7 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
         {
           id: nextId(),
           role: "assistant",
-          content: buildMatchmakingReply(cheapest),
+          content: buildMatchmakingReply(category, cheapest),
         },
       ]);
       setIsAiThinking(false);
@@ -167,9 +167,9 @@ export function LiquiFlowProvider({ children }: { children: ReactNode }) {
           id: nextId(),
           role: "assistant",
           content:
-            `Transaction Successful! Your session with ${providerName} is confirmed.\n\n` +
+            `Service booking confirmed! Your session with ${providerName} is secured on-ledger.\n\n` +
             `Expert Settlement (${providerName}): ${servicePrice} HBAR\n` +
-            `Platform Network Fee: ${PLATFORM_NETWORK_FEE_HBAR} HBAR`,
+            `Matchmaking Network Fee: ${PLATFORM_NETWORK_FEE_HBAR} HBAR`,
           transactionId: receipt.transactionId,
           consensusTimestamp: receipt.consensusTimestamp,
         },

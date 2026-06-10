@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LiquiFlow AI — Hedera Commerce Agent",
+  title: "LiquiFlow AI | Decentralized Services Marketplace",
   description:
-    "AP2-gated DeFi execution with Multi-Party Payments on Hedera Testnet",
+    "AI-powered matchmaking for Web3 and intellectual services with agentic commerce and Hedera multi-party payments on Testnet",
 };
 
 export default function RootLayout({

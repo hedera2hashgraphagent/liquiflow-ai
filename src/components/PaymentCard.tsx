@@ -64,7 +64,7 @@ export function PaymentCard({ payment, onPaymentSuccess }: PaymentCardProps) {
 
       <div className="space-y-4 p-5">
         <div>
-          <p className="text-sm text-zinc-400">Premium execution fee</p>
+          <p className="text-sm text-zinc-400">Service booking total</p>
           <p className="mt-1 text-3xl font-bold text-white">
             {payment.amount_hbar}{" "}
             <span className="text-lg font-medium text-emerald-400">ℏ</span>
@@ -94,7 +94,7 @@ export function PaymentCard({ payment, onPaymentSuccess }: PaymentCardProps) {
         {status === "success" && receipt && (
           <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3">
             <p className="text-xs font-medium text-emerald-400">
-              Transaction Successful
+              Service Booking Confirmed
             </p>
             <a
               href={getHashscanExplorerUrl(receipt)}
@@ -125,7 +125,7 @@ export function PaymentCard({ payment, onPaymentSuccess }: PaymentCardProps) {
           >
             {status === "paying"
               ? "Awaiting wallet signature…"
-              : "Pay to Unlock Execution"}
+              : "Pay to Book Service"}
           </button>
         )}
       </div>

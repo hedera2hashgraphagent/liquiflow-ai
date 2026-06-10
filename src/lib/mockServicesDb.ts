@@ -171,13 +171,20 @@ export function extractCategoryIntent(userMessage: string): string | null {
   return bestCategory;
 }
 
-/** Filters by category, sorts by price ascending, returns the cheapest provider. */
-export function findCheapestService(category: string): ServiceListing | null {
-  const matches = mockServicesDb
+/** All providers in a category, sorted cheapest first. */
+export function getProvidersByCategory(category: string): ServiceListing[] {
+  return mockServicesDb
     .filter((s) => s.category.toLowerCase() === category.toLowerCase())
     .sort((a, b) => a.priceHbar - b.priceHbar);
+}
 
-  return matches[0] ?? null;
+/** Filters by category, sorts by price ascending, returns the cheapest provider. */
+export function findCheapestService(category: string): ServiceListing | null {
+  return getProvidersByCategory(category)[0] ?? null;
+}
+
+function formatPriceHbar(priceHbar: number): string {
+  return priceHbar.toFixed(2);
 }
 
 /** Total payable amount: expert service fee + platform matchmaking fee. */
@@ -187,11 +194,20 @@ export function calculateMarketplaceTotal(servicePriceHbar: number): number {
   );
 }
 
-/** Dynamic AI reply after matchmaking completes. */
-export function buildMatchmakingReply(service: ServiceListing): string {
+/** Dynamic AI reply listing all options and the cheapest selection. */
+export function buildMatchmakingReply(
+  category: string,
+  cheapest: ServiceListing,
+): string {
+  const providers = getProvidersByCategory(category);
+  const providerLines = providers
+    .map((p) => `- ${p.providerName}: ${formatPriceHbar(p.priceHbar)} HBAR`)
+    .join("\n");
+
   return (
-    `I searched through multiple providers for '${service.category}' and found the most affordable option. ` +
-    `Provider: '${service.providerName}'. The service fee is ${service.priceHbar} HBAR. ` +
+    `I scanned the decentralized network for '${category}' and found ${providers.length} available experts:\n` +
+    `${providerLines}\n\n` +
+    `I have automatically selected the most cost-effective option for you: **${cheapest.providerName}** for **${formatPriceHbar(cheapest.priceHbar)} HBAR**. ` +
     `My matchmaking network fee is ${PLATFORM_NETWORK_FEE_HBAR} HBAR.`
   );
 }

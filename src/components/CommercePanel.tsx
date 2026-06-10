@@ -10,10 +10,10 @@ import {
 import { useWallet } from "@/providers/WalletProvider";
 
 const STATE_LABELS: Record<CommercePanelState, string> = {
-  idle: "Awaiting Request",
-  payment_required: "Payment Required",
-  processing: "Processing",
-  success: "Complete",
+  idle: "Awaiting Match",
+  payment_required: "Booking Due",
+  processing: "Settling",
+  success: "Booked",
 };
 
 export function CommercePanel() {
@@ -39,9 +39,11 @@ export function CommercePanel() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold tracking-tight text-zinc-100">
-              Commerce Agent
+              Service Booking
             </h2>
-            <p className="text-[10px] text-zinc-500">AP2 · Hedera Testnet</p>
+            <p className="text-[10px] text-zinc-500">
+              Agentic Commerce · Hedera Testnet
+            </p>
           </div>
           <span
             className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors duration-300 ${
@@ -90,7 +92,7 @@ export function CommercePanel() {
 
         {!isConnected && commerceState === "payment_required" && (
           <p className="mt-4 text-center text-xs text-amber-400/90 transition-opacity duration-300">
-            Connect HashPack in the header to pay execution fees.
+            Connect HashPack in the header to complete your service booking.
           </p>
         )}
       </div>
@@ -117,11 +119,11 @@ function IdleView() {
         </svg>
       </div>
       <p className="text-sm font-medium text-zinc-400">
-        Intellectual Services Marketplace
+        Matchmaking Checkout
       </p>
       <p className="mt-2 max-w-[240px] text-xs leading-relaxed text-zinc-600">
-        Ask for a service category in chat. The agent will match you with the
-        cheapest provider and open the AP2 payment gate here.
+        Request an expert in chat. Your AI matchmaker will compare providers,
+        select the best price, and open agentic commerce checkout here.
       </p>
     </div>
   );
@@ -176,7 +178,7 @@ function PaymentRequiredView({
     <div className="flex flex-1 flex-col">
       <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-zinc-900 to-emerald-950/30 p-5">
         <p className="text-xs font-semibold uppercase tracking-widest text-emerald-500/80">
-          AP2 Payment Gate
+          Agentic Commerce Checkout
         </p>
         <p className="mt-1 text-sm text-zinc-400">{service.category}</p>
         <p className="mt-0.5 text-base font-semibold text-zinc-100">
@@ -187,19 +189,19 @@ function PaymentRequiredView({
           <span className="text-lg font-medium text-emerald-400">ℏ</span>
         </p>
         <p className="mt-2 text-sm text-zinc-400">
-          Service {service.priceHbar} ℏ + network fee {platformFee} ℏ — settled
-          on Hedera Testnet via MPP.
+          Expert booking {service.priceHbar} ℏ + matchmaking fee {platformFee} ℏ
+          — multi-party settlement on Hedera Testnet.
         </p>
 
         <ul className="mt-4 space-y-2 border-t border-zinc-800/80 pt-4 text-xs text-zinc-500">
           <li className="flex justify-between">
-            <span>Expert service</span>
+            <span>Expert booking</span>
             <span className="font-mono text-zinc-300">
               {service.priceHbar} HBAR
             </span>
           </li>
           <li className="flex justify-between">
-            <span>Platform network fee</span>
+            <span>Matchmaking network fee</span>
             <span className="font-mono text-zinc-300">
               {platformFee} HBAR
             </span>
@@ -266,10 +268,10 @@ function ProcessingView() {
         </div>
       </div>
       <p className="text-sm font-medium text-zinc-200">
-        Processing via Hedera Testnet…
+        Settling service booking on Hedera…
       </p>
       <p className="mt-2 text-xs text-zinc-500">
-        Confirm the MPP transfer in HashPack if prompted.
+        Confirm the multi-party payment in HashPack if prompted.
       </p>
     </div>
   );
@@ -304,10 +306,10 @@ function SuccessView({
         </svg>
       </div>
       <p className="text-base font-semibold text-emerald-300">
-        Transaction Successful!
+        Service Booking Confirmed!
       </p>
       <p className="mt-2 max-w-[260px] text-sm leading-relaxed text-zinc-400">
-        Your session with {service.providerName} is confirmed.
+        Your expert session with {service.providerName} is secured on-ledger.
       </p>
 
       <ul className="mt-4 w-full max-w-[260px] space-y-1.5 rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-4 py-3 text-left text-xs text-zinc-400">
@@ -318,7 +320,7 @@ function SuccessView({
           </span>
         </li>
         <li className="flex justify-between gap-3">
-          <span>Platform Network Fee</span>
+          <span>Matchmaking Network Fee</span>
           <span className="font-mono text-emerald-400/90">
             {platformFee} HBAR
           </span>

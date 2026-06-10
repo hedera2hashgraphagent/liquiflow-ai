@@ -4,7 +4,33 @@ import { useEffect, useRef, useState } from "react";
 import { getHashscanExplorerUrl } from "@/lib/hashscan";
 import { useLiquiFlow } from "@/providers/LiquiFlowProvider";
 
-const SUGGESTED_PROMPT = "I need Web3 consulting";
+const WELCOME_MESSAGE =
+  "Welcome to LiquiFlow! I am your AI Agent for Web3 and Intellectual Services. Tell me what kind of expert you need, and I will find the most affordable option, match you, and handle the Hedera multi-party payment automatically.";
+
+const QUICK_PROMPTS = [
+  "Find me a Web3 Consultant",
+  "I need a Smart Contract Audit",
+  "Search for Psychological Support",
+] as const;
+
+/** Renders assistant text with basic **bold** markers. */
+function ChatMessageContent({ content }: { content: string }) {
+  const parts = content.split(/(\*\*[^*]+\*\*)/g);
+
+  return (
+    <p className="whitespace-pre-wrap">
+      {parts.map((part, index) =>
+        part.startsWith("**") && part.endsWith("**") ? (
+          <strong key={index} className="font-semibold text-emerald-300">
+            {part.slice(2, -2)}
+          </strong>
+        ) : (
+          <span key={index}>{part}</span>
+        ),
+      )}
+    </p>
+  );
+}
 
 export function ChatWindow() {
   const [input, setInput] = useState("");
@@ -26,23 +52,16 @@ export function ChatWindow() {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-6 sm:px-6">
         {messages.length === 0 && (
-          <div className="mx-auto max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6 text-center transition-opacity duration-500">
-            <p className="text-lg font-medium text-zinc-200">
-              Intellectual Services Marketplace
+          <div className="mx-auto max-w-xl rounded-2xl border border-zinc-800/80 bg-gradient-to-b from-zinc-900/80 to-zinc-950/50 p-6 text-center shadow-inner shadow-black/20 transition-opacity duration-500">
+            <p className="text-lg font-semibold tracking-tight text-zinc-100">
+              LiquiFlow AI
             </p>
-            <p className="mt-2 text-sm text-zinc-500">
-              Ask for a service category — Web3 consulting, smart contract
-              audits, legal advisory, and more. The agent finds the cheapest
-              provider and settles via AP2 on Hedera Testnet.
+            <p className="mt-1 text-xs font-medium uppercase tracking-widest text-emerald-500/70">
+              Decentralized Services Marketplace
             </p>
-            <button
-              type="button"
-              onClick={() => sendUserMessage(SUGGESTED_PROMPT)}
-              disabled={isAiThinking}
-              className="mt-4 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-emerald-400 transition hover:border-emerald-500/50 hover:bg-emerald-500/10 disabled:opacity-50"
-            >
-              Try: &quot;{SUGGESTED_PROMPT}&quot;
-            </button>
+            <p className="mt-4 text-left text-sm leading-relaxed text-zinc-400">
+              {WELCOME_MESSAGE}
+            </p>
           </div>
         )}
 
@@ -62,10 +81,14 @@ export function ChatWindow() {
             >
               {msg.role === "assistant" && (
                 <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-500/80">
-                  LiquiFlow AI
+                  LiquiFlow Matchmaker
                 </p>
               )}
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+              {msg.role === "assistant" ? (
+                <ChatMessageContent content={msg.content} />
+              ) : (
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+              )}
               {msg.transactionId && (
                 <>
                   <a
@@ -95,7 +118,7 @@ export function ChatWindow() {
               <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-500 [animation-delay:150ms]" />
               <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-500 [animation-delay:300ms]" />
             </span>
-            LiquiFlow is thinking…
+            Scanning providers…
           </div>
         )}
 
@@ -106,11 +129,26 @@ export function ChatWindow() {
         onSubmit={handleSubmit}
         className="shrink-0 border-t border-zinc-800 bg-zinc-950/80 p-4 backdrop-blur"
       >
+        {messages.length === 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {QUICK_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => sendUserMessage(prompt)}
+                disabled={isAiThinking}
+                className="rounded-full border border-zinc-700/80 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-300 disabled:opacity-50"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="e.g. I need Web3 consulting…"
+            placeholder="Describe the service or expert you are looking for..."
             disabled={isAiThinking}
             className="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 transition focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/30 disabled:opacity-50"
           />

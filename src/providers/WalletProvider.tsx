@@ -39,7 +39,8 @@ const PLACEHOLDER_PROJECT_ID = "YOUR_WALLETCONNECT_PROJECT_ID";
 
 const DAPP_METADATA = {
   name: "LiquiFlow AI",
-  description: "Hedera Commerce Agent — AP2 / MPP DeFi execution",
+  description:
+    "Decentralized Intellectual Services Marketplace — Agentic Commerce on Hedera",
   url:
     typeof window !== "undefined"
       ? window.location.origin
