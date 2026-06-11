@@ -61,7 +61,8 @@ export function getHederaAISDKTools(): Record<string, Tool> {
   if (!toolkit) return {};
 
   return hederaLangchainToolsToAISDK(
-    toolkit.getTools() as HederaLangchainTool[],
+    // @ts-ignore
+    toolkit.getTools() as any,
   );
 }
 
