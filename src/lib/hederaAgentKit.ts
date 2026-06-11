@@ -55,15 +55,22 @@ export function getHederaLangchainToolkit(): HederaLangchainToolkit | null {
   return cachedToolkit;
 }
 
+/**
+ * Breaks the LangChain→Zod recursive type chain that triggers
+ * "Type instantiation is excessively deep" on Vercel/CI TypeScript.
+ */
+function extractHederaLangchainTools(
+  toolkit: HederaLangchainToolkit,
+): HederaLangchainTool[] {
+  return toolkit.getTools() as unknown as HederaLangchainTool[];
+}
+
 /** Hedera Agent Kit tools adapted for Vercel AI SDK streamText. */
 export function getHederaAISDKTools(): Record<string, Tool> {
   const toolkit = getHederaLangchainToolkit();
   if (!toolkit) return {};
 
-  return hederaLangchainToolsToAISDK(
-    // @ts-ignore
-    toolkit.getTools() as any,
-  );
+  return hederaLangchainToolsToAISDK(extractHederaLangchainTools(toolkit));
 }
 
 /** Adapts LangChain HederaAgentKitTool instances to Vercel AI SDK Tool records. */

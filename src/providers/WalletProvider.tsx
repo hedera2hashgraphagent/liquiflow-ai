@@ -37,6 +37,19 @@ const PROJECT_ID =
 
 const PLACEHOLDER_PROJECT_ID = "YOUR_WALLETCONNECT_PROJECT_ID";
 
+const MISSING_PROJECT_ID_MESSAGE =
+  "Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in .env.local (https://cloud.reown.com/).";
+
+function isValidProjectId(projectId: string): boolean {
+  return (
+    projectId.length > 0 &&
+    projectId !== PLACEHOLDER_PROJECT_ID &&
+    !projectId.startsWith("your_")
+  );
+}
+
+const HAS_VALID_PROJECT_ID = isValidProjectId(PROJECT_ID);
+
 const DAPP_METADATA = {
   name: "LiquiFlow AI",
   description:
@@ -64,14 +77,6 @@ export interface WalletContextValue {
 
 const WalletContext = createContext<WalletContextValue | null>(null);
 
-function isValidProjectId(projectId: string): boolean {
-  return (
-    projectId.length > 0 &&
-    projectId !== PLACEHOLDER_PROJECT_ID &&
-    !projectId.startsWith("your_")
-  );
-}
-
 /** HashPack sign-and-execute — routes SignAndExecuteTransaction via Signer.call(). */
 async function executeTransaction(
   signer: DAppSigner,
@@ -85,19 +90,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const initPromiseRef = useRef<Promise<DAppConnector | null> | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [walletError, setWalletError] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(!HAS_VALID_PROJECT_ID);
+  const [walletError, setWalletError] = useState<string | null>(
+    HAS_VALID_PROJECT_ID ? null : MISSING_PROJECT_ID_MESSAGE,
+  );
 
   const ensureConnector = useCallback(async (): Promise<DAppConnector | null> => {
     if (connectorRef.current) {
       return connectorRef.current;
     }
 
-    if (!isValidProjectId(PROJECT_ID)) {
-      const message =
-        "Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in .env.local (https://cloud.reown.com/).";
-      setWalletError(message);
-      throw new Error(message);
+    if (!HAS_VALID_PROJECT_ID) {
+      setWalletError(MISSING_PROJECT_ID_MESSAGE);
+      throw new Error(MISSING_PROJECT_ID_MESSAGE);
     }
 
     if (!initPromiseRef.current) {
@@ -140,16 +145,27 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   // Pre-warm WalletConnect in the background so Connect is ready immediately
   useEffect(() => {
-    if (!isValidProjectId(PROJECT_ID)) {
-      setIsInitialized(true);
-      setWalletError(
-        "Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in .env.local (https://cloud.reown.com/).",
-      );
-      return;
-    }
-    ensureConnector()
-      .catch(() => undefined)
-      .finally(() => setIsInitialized(true));
+    if (!HAS_VALID_PROJECT_ID) return;
+
+    let cancelled = false;
+
+    const warmWallet = async () => {
+      try {
+        await ensureConnector();
+      } catch {
+        // ensureConnector records wallet errors on the context
+      } finally {
+        if (!cancelled) {
+          setIsInitialized(true);
+        }
+      }
+    };
+
+    void warmWallet();
+
+    return () => {
+      cancelled = true;
+    };
   }, [ensureConnector]);
 
   const connect = useCallback(async () => {
