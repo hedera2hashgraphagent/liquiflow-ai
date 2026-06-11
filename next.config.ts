@@ -5,21 +5,11 @@ import type { NextConfig } from "next";
 const nextConfig: any = {
   serverExternalPackages: [
     "@hashgraph/sdk",
-    "@hiero-ledger/sdk",
-    "@hashgraph/hedera-agent-kit",
-    "@hashgraph/hedera-agent-kit-langchain",
-    "@langchain/core",
-    "@langchain/mcp-adapters",
-    "@langchain/langgraph",
-    "langchain",
+    "@hiero-ledger/sdk"
   ],
-  turbopack: {},
   typescript: {
     ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  }
 };
 
 export default nextConfig;
