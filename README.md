@@ -2,6 +2,15 @@
 
 **Decentralized Services Marketplace — Hedera Hackathon (Week 4 Bounty)**
 
+🚀 **Live Demo:** [https://liquiflow-ai.vercel.app/]  
+📺 **Demo Video:** [Watch on YouTube](https://www.youtube.com/watch?v=gxJV_adbQFc)
+
+---
+
+LiquiFlow AI is an agentic commerce platform built on Hedera Testnet...
+
+**Decentralized Services Marketplace — Hedera Hackathon (Week 4 Bounty)**
+
 LiquiFlow AI is an agentic commerce platform built on Hedera Testnet. A single AI agent orchestrates decentralized expert matchmaking, on-ledger data retrieval, payment gating, and atomic settlement—demonstrating the production architecture for **Agentic Commerce** on Hashgraph.
 
 The system deliberately separates concerns across three protocol layers:
