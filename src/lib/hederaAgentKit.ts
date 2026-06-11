@@ -62,7 +62,10 @@ export function getHederaLangchainToolkit(): HederaLangchainToolkit | null {
 function extractHederaLangchainTools(
   toolkit: HederaLangchainToolkit,
 ): HederaLangchainTool[] {
-  return toolkit.getTools() as unknown as HederaLangchainTool[];
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore: Bypass Vercel TS deep instantiation infinite loop
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return toolkit.getTools() as any;
 }
 
 /** Hedera Agent Kit tools adapted for Vercel AI SDK streamText. */
