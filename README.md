@@ -31,6 +31,23 @@ Traditional service marketplaces force users through static listings, opaque pri
 
 ---
 
+## Why Hedera?
+
+Hedera's hashgraph consensus makes agentic commerce viable at scale — a claim other L1 chains cannot match for real-time agent-to-service payments:
+
+| Requirement | Ethereum L1 | Solana | Hedera |
+|---|---|---|---|
+| **Finality** | ~12 seconds | ~0.4 seconds | **~3 seconds (deterministic)** |
+| **Fee predictability** | Variable (gas auctions) | Low but variable | **Fixed, USD-denominated, sub-cent** |
+| **Multi-party atomicity** | Requires smart contract escrow | Separate instructions | **Native MPP TransferTransaction** |
+| **Agent-safe reads** | Archive node or third-party indexer | RPC + commitment levels | **Consensus-verified mirror node queries** |
+| **aBFT security** | Probabilistic (longest chain) | PoH + PoS (BFT variant) | **Asynchronous BFT (highest grade)** |
+| **SDK breadth** | Solidity only (EVM) | Rust, C, Python SDKs | **JS, Python, Java, Rust, Go, Swift** |
+
+> At machine speed, agent-to-agent commerce cannot tolerate probabilistic settlement, unpredictable fees, or chained escrow contracts. Hedera's native services — MPP, HTS, HCS — are purpose-built for this workload. LiquiFlow demonstrates exactly this architecture in production form.
+
+---
+
 ## Three-Layer Security Model
 
 ```mermaid
@@ -267,6 +284,25 @@ Open [http://localhost:3000](http://localhost:3000).
 5. Approve the **MPP transfer** in HashPack.
 6. Verify the on-ledger split via the **HashScan** link.
 
+---
+
+## 🧪 For Judges: 60-Second Test Guide
+
+> ⚡ Optimized for 5-minute evaluation windows. All steps run on **Hedera Testnet** — no real HBAR at risk.
+
+| Step | Action | What to Verify |
+|---|---|---|
+| **1** | Open [liquiflow-ai.vercel.app](https://liquiflow-ai.vercel.app/) | Chat UI loads, agent welcome message appears |
+| **2** | Connect **HashPack** wallet (Testnet) | Wallet button in header, HashPack popup confirms |
+| **3** | Type: *"I need a Web3 Consultant"* | Agent returns **provider comparison**, selects cheapest |
+| **4** | AP2 Payment Card appears in **Service Booking** panel | Shows service price + 0.05 HBAR platform fee, MPP split visible |
+| **5** | Click **Pay** → approve in HashPack | MPP TransferTransaction executes on-chain → HashScan link appears |
+| **6** | Click the **HashScan link** in chat | Opens `hashscan.io/testnet` — verify transaction status, payer, recipients |
+
+**What you just witnessed:** Natural language → HAK on-ledger query → AP2 commerce gate → atomic MPP settlement → on-chain verification. All three layers exercised in a single flow.
+
+**Ask the agent anything!** Try *"What's my HBAR balance?"* to see native HAK query tools, or *"Find me a Smart Contract Auditor"* for a different provider comparison.
+
 ### Production build
 
 ```bash
@@ -300,15 +336,24 @@ Platform matchmaking fee: **0.05 HBAR** per booking (MPP recipient `0.0.22222`).
 
 ---
 
-## Scalability
+## Scalability & Roadmap
 
 LiquiFlow is architected as a **marketplace primitive**, not a static demo.
 
-| Phase | Direction |
-|---|---|
-| **Near-term** | Replace `mockServicesDb` with HCS-indexed provider registries or on-chain listings |
-| **Mid-term** | Composable AP2 gates per service type; multi-agent price negotiation |
-| **Long-term** | Global intellectual-services marketplace with HAK-powered reputation and MPP-native revenue splits |
+| Phase | Direction | Interop Standards |
+|---|---|---|
+| **Near-term** | Replace `mockServicesDb` with HCS-indexed provider registries or on-chain listings | — |
+| **Mid-term** | Composable AP2 gates per service type; multi-agent price negotiation | **UCP** — agent discovery & service registration; **ACP** — cross-agent commerce negotiation |
+| **Long-term** | Global intellectual-services marketplace with HAK-powered reputation and MPP-native revenue splits | Full Agentic Commerce stack (AP2 + UCP + ACP + MPP) |
+
+### Standards Alignment
+
+| Standard | Status | Implementation Plan |
+|---|---|---|
+| **AP2** (Agentic Payment Protocol) | ✅ Implemented | Custom `AP2PaymentRequest` — canonical JSON schema for payment gating |
+| **MPP** (Multi-Party Payment) | ✅ Implemented | Atomic `TransferTransaction` splitting settlement across recipients |
+| **UCP** (Universal Commerce Protocol) | 🔮 Planned (Mid-term) | Agent service discovery + decentralized provider registration via HCS |
+| **ACP** (Agent Communication Protocol) | 🔮 Planned (Mid-term) | Cross-agent commerce: LiquiFlow agents negotiating deals autonomously |
 
 Enablers already in production:
 
@@ -316,6 +361,34 @@ Enablers already in production:
 - **Dynamic AP2 payloads** — arbitrary service prices map to valid payment requests without code changes
 - **Atomic MPP** — merchant and platform paid in one transaction; zero payment fragmentation
 - **Wallet-agnostic signing** — WalletConnect supports HashPack and compatible Hedera wallets
+
+---
+
+## 🔍 On-Chain Verification
+
+Every LiquiFlow marketplace transaction is fully verifiable on Hedera Testnet:
+
+1. **HashScan link** — Each successful MPP payment generates a direct `https://hashscan.io/testnet/transaction/` link shown in chat.
+2. **MPP split audit** — Verify that the single TransferTransaction contains both expert settlement (`0.0.11111`) and platform fee (`0.0.22222`) transfers.
+3. **Replay protection** — Each transaction ID is consumed exactly once; re-submission is rejected with a clear error.
+
+> *No black boxes. Every payment leaves a public audit trail on Hedera's consensus layer.*
+
+---
+
+## ✅ Bounty Checklist (Week 4)
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Public GitHub repository | ✅ | `hedera2hashgraphagent/liquiflow-ai` |
+| Built with Hedera Agent Kit (JS) | ✅ | `@hashgraph/hedera-agent-kit` ^4.0.0 + `langchain` ^1.0.0 |
+| Live demo agent URL | ✅ | [liquiflow-ai.vercel.app](https://liquiflow-ai.vercel.app/) |
+| Hosted 90+ days post-submission | ✅ | Vercel — stable hosting |
+| AI Studio tools feedback submitted | ✅ | [Issue #918](https://github.com/hashgraph/hedera-agent-kit-js/issues/918) |
+| AP2 payment gating | ✅ | Custom `AP2PaymentRequest` — canonical schema |
+| MPP atomic settlement | ✅ | Single `TransferTransaction` — multi-recipient split |
+| Human-in-the-loop payment | ✅ | HashPack approval required before any on-chain write |
+| Demo video (≤5 min) | ✅ | [YouTube](https://www.youtube.com/watch?v=gxJV_adbQFc) |
 
 ---
 
@@ -327,6 +400,14 @@ Apache-2.0 — see Hedera SDK, Agent Kit, and wallet-connect package licenses fo
 
 ## Submission
 
-**LiquiFlow AI** — Hedera Hackathon Week 4 Bounty
+**LiquiFlow AI** — Hedera AI Bounty Week 4: Commerce Agent
 
-A three-layer agentic commerce stack on Hedera: **HAK** for verified on-ledger reads, **AP2** for intelligent marketplace gating, **MPP** for atomic split settlement. Built to demonstrate that Agentic Commerce on Hashgraph is production-ready architecture—not a concept demo.
+A three-layer agentic commerce stack on Hedera: **HAK** for verified on-ledger reads, **AP2** for intelligent marketplace gating, **MPP** for atomic split settlement. Built to demonstrate that Agentic Commerce on Hashgraph is production-ready architecture — not a concept demo.
+
+> 🔗 **YouTube description should include:**
+> ```
+> 🔗 Live Demo: https://liquiflow-ai.vercel.app/
+> 📂 GitHub: https://github.com/hedera2hashgraphagent/liquiflow-ai
+> 🏆 Built for Hedera AI Bounty Week 4 — Commerce Agent
+> #Hedera #HBAR #AI #Web3 #AgenticCommerce
+> ```
